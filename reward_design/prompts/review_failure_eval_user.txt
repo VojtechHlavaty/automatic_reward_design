@@ -1,0 +1,25 @@
+Task: {task_description}.
+
+Subtasks, in order:
+{subtasks}
+
+The policy was run for one episode in each of {episodes} environments: {success_rate} of the episodes succeeded. The failed episodes, grouped by the last success condition they reached: {failure_counts}. {note}
+Below are frames of {num_failures} failed episodes, chosen to cover the most common ways of failing. Each episode comes with a timeline of the task's success conditions (when each became true and when it was lost again) and a short statement of the critical moment: where the episode stopped making progress. Each episode has a start frame, a context frame, several close-ups of the work area around the critical moment, and the frame at the end of the episode.
+Measured facts about this policy (from many simulated episodes):
+{facts}
+How to use them: rates of episodes that 'reached' a step count a step that happened at least once, even for a moment; they do not say that the state holds. The timelines say exactly when a condition held in the shown episode; use them to read the close-ups in order. Trust the measured facts and the timelines for things too small to see, but where the frames clearly show something else, report what you see and say which fact it contradicts. If the camera cannot see the object or the hand in some frames, say so instead of assuming where it is.
+Focus on why these episodes fail. For every failed episode, describe from the close-ups what happens at the critical moment: the state of every manipulated object (where it is, flat or tipped, between the fingers or free, moving with the hand or at rest) and what the robot does just before and after (how the hand, the gripper and the object move relative to each other, and any contact between them or with the surroundings). Then say which failures look alike and which differ.
+For each subtask, give the completion averaged over these failed episodes, from 0 to 1 (0 = not attempted, 0.5 = partly done, 1 = fully done), and explain what you see.
+Then describe the main failure modes and what the reward function should encourage or discourage to remove them, as specific, observable behaviours tied to the moments you saw.
+Answer only with a JSON object in this format:
+```json
+{
+  "subtasks": [
+    {"name": "subtask name", "completion": 0.0, "explanation": "what is visible"}
+  ],
+  "object_state": "pose and contacts of every manipulated object around the critical moments",
+  "summary": "what the robot does in the failed episodes, episode by episode",
+  "failure_modes": "the ways of failing, how often each appears among the recorded failures, and what causes them",
+  "suggestions": "what the reward should encourage or discourage"
+}
+```

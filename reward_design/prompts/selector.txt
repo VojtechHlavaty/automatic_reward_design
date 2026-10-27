@@ -1,0 +1,8 @@
+Task: {task}
+
+These earlier curricula were retrieved from the database:
+
+{records}
+
+Choose the single record that is most useful as a starting point for a new curriculum for this task: prefer the same robot and task, good outcomes, and feedback that explains what to keep or change. Choose null if none is useful.
+Answer only with a JSON object: {"choice": <record index or null>, "reason": "..."}

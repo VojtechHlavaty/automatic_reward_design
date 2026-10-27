@@ -1,0 +1,98 @@
+defaults:
+  - _self_
+  - env: g1_dex1_pick_place_return_random
+  - llm: qwen3.8_27b_fp8
+  - override hydra/launcher: local
+  - override hydra/output: local
+
+hydra:
+  job:
+    chdir: True
+  run:
+    dir: ./outputs/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
+
+# Pipeline parameters
+resume: null  # run folder to continue (e.g. outputs/runs/<date_time>); its saved config is reused
+iteration: 3  # curriculum-design iterations
+num_candidates: 2  # curricula per iteration (fewer, longer-trained candidates: skills appear late)
+num_candidates_schedule: null  # optional, one value per iteration (the last repeats), e.g. [8, 3, 2]: a wide first round of many short curricula, then fewer, longer ones
+curriculum_iterations_schedule: null  # optional, PPO iterations per curriculum per iteration, e.g. [500, 2000]
+min_transition_threshold: 0.8  # target rate: plans whose stage thresholds are lower are rejected (the planner is told)
+num_candidates_narrow: 2  # an iteration with more candidates than this is a wide round (one-stage curricula with different ideas for the next step)
+curriculum_iterations: 1500  # PPO iterations per curriculum, shared by its stages (4096 envs x 24 steps x 1500 = 147M steps)
+min_stage_iterations: 100  # minimum PPO iterations of a stage
+stage_max_retries: 5  # validation retries of the stage generator
+entropy_coef_range: [0.0, 0.0]  # no entropy bonus: with clipped actions it grows the action noise without bound (noise is set by env.exploration)
+learning_rate_range: [1.0e-5, 1.0e-3]  # allowed training.learning_rate in a stage YAML
+default_entropy_coef: 0.0  # entropy coefficient of stages that set none
+max_abs_weight: 200  # maximum magnitude of a reward-term weight
+warm_start_across_iterations: False  # start each curriculum from the best policy so far (best stage of the best curriculum; False = from the initial policy)
+init_checkpoint: null  # RSL-RL checkpoint every curriculum starts from (e.g. a pretrained or behavior-cloned policy); null = from scratch; needs env.experiment_name
+derived_quantities: True  # the LLM may define new quantities in stage YAMLs (Python functions of the env state), checked on live states
+stage_rollback: True  # start each stage from the best stage so far of its curriculum (by env.progress_flags), not always from the previous one
+hacking_review: True  # an independent LLM reviews every stage YAML for reward hacking before training; major findings go back to the stage generator
+hacking_review_rounds: 2  # reviews per stage YAML (after that the YAML is accepted with its review)
+review_measured: true  # give the reward-hacking reviewer the live check's measured reward per second per term and task step (less arithmetic in its thinking)
+review_incremental: true  # a re-review after a fix only checks the earlier findings and the changed terms
+hacking_audit: True  # after training, an LLM audits stages whose statistics show hacking (True), every stage ("all") or none (False)
+final_eval_from_best: False  # final evaluation runs start from the best policy of the search instead of the initial policy
+human_feedback_wait: 0  # seconds to wait for iter<i>/human_feedback.txt after each iteration (0 = do not wait; a file written later is still used)
+num_eval: 1  # final training runs of the best curriculum from scratch with new seeds (0 to skip)
+
+# Retrieval database (shared by all runs)
+vdb_path: ${hydra:runtime.cwd}/vdb  # created on the first run
+retrieval_top_k: 33  # records retrieved for the selector agent
+embedding_model: BAAI/bge-small-en-v1.5  # local sentence-embedding model
+hf_home: ${oc.env:HF_HOME,${oc.env:HOME}/.cache/huggingface}
+
+# Hard-case starts (rd_lib/hard_starts.py): each environment keeps the start states of its recent failed episodes,
+# and this share of the resets restarts from one of them (dropped once solved or after max_tries replays). Replayed
+# episodes are left out of the training statistics. null or prob 0 = off.
+hard_starts:
+  prob: 0.25
+  slots: 4
+  max_tries: 3
+
+# Visual evaluation of the final policies (also: --visual); needs a model that accepts images
+visual: False
+visual_rollouts: 1  # episodes per video (the checkpoint evaluation gives the numbers; the frames are a sanity check)
+visual_num_frames: 6  # frames per episode (each with a close-up of the work area when the env config has visual_crop)
+visual_frame_width: 480  # width [px] of the frames sent to the vision-language model
+video_length: 500  # control steps per episode when the env config sets no video_length
+video_extra_args: []
+visual_failures: 3  # >0: the VLM sees this many failed episodes (the most common ways of failing, close-ups around the
+                    # moment progress stopped, timelines of the success conditions) instead of one random rollout
+visual_failure_envs: 32  # episodes run to find the failures (one per environment)
+visual_dense_frames: 6  # close-ups around the critical moment of each failed episode
+vlm_model: null  # model for the visual evaluation; null = the LLM
+vlm_base_url: null
+
+# Training
+num_envs: 4096  # parallel environments per training run
+capture_video: False
+use_wandb: False
+wandb_username: ""
+wandb_project: ""
+extra_train_args: []  # extra arguments for IsaacLab's RSL-RL train.py; do not set agent.algorithm.entropy_coef here (stages set it)
+
+# IsaacLab parameters
+isaaclab_root: ${oc.env:ISAACLAB_PATH,${hydra:runtime.cwd}/../../IsaacLab}  # IsaacLab repository (set ISAACLAB_PATH)
+isaaclab_python: null  # Python of the IsaacLab environment (null = the Python that runs the pipeline)
+gpus: null  # list of GPU indices for training runs (null = all GPUs)
+max_runs_per_gpu: 3  # concurrent training runs per GPU
+train_timeout: null  # seconds before a training run is killed (null = no limit)
+
+# Stage extensions, checkpoint evaluation and the reward-ordering check
+stage_extensions: 2  # per curriculum: extend a stage that missed its target while its key metric was still rising
+stage_extension_share: 0.25  # length of an extension as a share of curriculum_iterations
+checkpoint_evaluation: True  # deterministic evaluation of each candidate's best checkpoint (success rate + condition breakdown)
+eval_num_envs: 256
+eval_episodes_per_env: 3
+reward_ordering_check: True  # the live checker compares the stage reward between the task's progress levels
+
+# Token use: model roles (thinking only for planning and the reward-hacking review/audit)
+reasoning_max_tokens: null  # cap of planning/review answers including thinking (null = no cap)
+light_max_tokens: 4096  # cap of the simple calls (retrieval query, example selection, format fixes)
+llm_light:  # optional cheaper model for the simple calls (null = the main model without thinking)
+  model: null
+  llm_base_url: null

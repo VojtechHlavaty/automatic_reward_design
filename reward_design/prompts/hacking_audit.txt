@@ -1,0 +1,27 @@
+You audit a trained curriculum stage for reward hacking. The training statistics below show the rate of the task
+flags and the mean contribution of each reward term (per control step) at the start and at the end of the stage.
+
+Task: {task}
+
+Stage YAML:
+```yaml
+{stage_yaml}
+```
+
+Statistics (start of stage -> end of stage):
+{statistics}
+
+Automatic warnings: {warnings}
+
+Physical evidence: a flag that rose is only real progress if the physical state backs it (for example a "released"
+flag while the gripper is still physically closed, or "grasped" while the object was only pushed or tipped, is not).
+Compare the command-based flags with the flags that measure the physical state in the statistics (and with the
+checkpoint evaluation's condition breakdown, when given) and report any flag that rose without physical evidence.
+
+Did the policy hack the reward: did the reward rise while the stage objective or a skill of an earlier stage got
+worse, or did it rise through a term that does not reflect the objective? Name the terms that were exploited and
+how, and say how the reward should change. If there is no sign of hacking, say so.
+Answer only with a JSON object:
+```json
+{"hacking": true, "diagnosis": "...", "exploited_terms": ["..."], "fix": "..."}
+```

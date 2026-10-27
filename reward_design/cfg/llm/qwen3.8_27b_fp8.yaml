@@ -1,0 +1,16 @@
+# @package _global_
+# Local Qwen3.8-27B-FP8 served by vLLM (start it with scripts/serve_qwen3.8_27b_fp8.sh)
+# For the video review (visual: true), start the server with VISION=1 (the video evaluation sends images)
+model: Qwen/Qwen3.8-27B-FP8
+temperature: 1.0  # Qwen3.8 thinking-mode recommendation (temperature 1.0, top_p 0.95, top_k 20)
+top_p: 0.95
+max_tokens: null  # null lets vLLM use the rest of the context window (MAX_MODEL_LEN of the server)
+reasoning_effort: medium  # xhigh (model default), medium or low; xhigh thinks much longer per sample
+chunk_size: 16  # vLLM generates all samples of one request in parallel
+llm_base_url: http://localhost:8000/v1
+llm_timeout: 3600  # seconds per LLM request
+llm_extra_body:
+  top_k: 20
+  chat_template_kwargs:
+    enable_thinking: True
+gpus: [1, 2, 3, 4, 5, 6, 7]  # GPU 0 is used by the vLLM server

@@ -1,0 +1,8 @@
+Write a short search query (one or two sentences) to find earlier training curricula that are useful for this task in a database of past curricula, their outcomes and feedback.
+
+Task: {task}
+
+Latest feedback on this task:
+{history}
+
+Answer only with a JSON object: {"query": "..."}

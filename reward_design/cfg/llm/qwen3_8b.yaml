@@ -1,0 +1,15 @@
+# @package _global_
+# Local Qwen3-8B served by vLLM (start it with scripts/serve_qwen3_8b.sh)
+model: Qwen/Qwen3-8B
+temperature: 0.6  # Qwen3 thinking-mode recommendation (temperature 0.6, top_p 0.95, top_k 20)
+top_p: 0.95
+max_tokens: null  # null lets vLLM use the rest of the context window
+reasoning_effort: null  # reasoning depth for models that support it (e.g. low, medium, high); null = model default
+chunk_size: 16  # vLLM generates all samples of one request in parallel
+llm_base_url: http://localhost:8000/v1
+llm_timeout: 1800  # seconds per LLM request
+llm_extra_body:
+  top_k: 20
+  chat_template_kwargs:
+    enable_thinking: True  # set to False to skip the reasoning phase (faster, usually weaker code)
+gpus: [1, 2, 3, 4, 5, 6, 7]  # GPU 0 is used by the vLLM server

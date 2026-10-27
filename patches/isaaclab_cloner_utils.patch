@@ -1,0 +1,43 @@
+diff --git a/source/isaaclab/isaaclab/cloner/cloner_utils.py b/source/isaaclab/isaaclab/cloner/cloner_utils.py
+index 22ba6d8a9..471e8f8d1 100644
+--- a/source/isaaclab/isaaclab/cloner/cloner_utils.py
++++ b/source/isaaclab/isaaclab/cloner/cloner_utils.py
+@@ -100,26 +100,27 @@ def resolve_clone_plan_source(path_expr: str, plan: ClonePlan) -> tuple[str, str
+         NotImplementedError: When the union of matching rows' clone masks does not
+             cover every env (partial-env heterogeneous coverage is unsupported).
+     """
+-    matching_template: str | None = None
+-    matching_rows: list[int] = []
+-    matching_suffix: str | None = None
++    # a prim nested inside another planned asset (e.g. a camera mounted on a robot link, which is
++    # its own spawn group) matches both destination templates; the most specific (longest) template is the right one
++    matches: dict[str, tuple[str, list[int]]] = {}
+     for source_index, destination_template in enumerate(plan.destinations):
+         if "{}" not in destination_template:
+             continue
+         suffix = get_suffix(path_expr, destination_template)
+         if suffix is None:
+             continue
+-        if matching_template is None:
+-            matching_template = destination_template
+-            matching_suffix = suffix
+-        elif destination_template != matching_template:
++        matches.setdefault(destination_template, (suffix, []))[1].append(source_index)
++    if not matches:
++        return None
++    templates = sorted(matches, key=len, reverse=True)
++    for shorter in templates[1:]:
++        if not templates[0].startswith(shorter.rstrip("/") + "/") and templates[0] != shorter:
+             raise ValueError(
+                 f"path_expr {path_expr!r}: matches multiple destination templates"
+-                f" {matching_template!r} and {destination_template!r}."
++                f" {templates[0]!r} and {shorter!r}."
+             )
+-        matching_rows.append(source_index)
+-    if matching_template is None:
+-        return None
++    matching_template = templates[0]
++    matching_suffix, matching_rows = matches[matching_template]
+     if not plan.clone_mask[matching_rows].any(dim=0).all():
+         raise NotImplementedError(
+             f"path_expr {path_expr!r}: partial-env heterogeneous coverage is unsupported;"

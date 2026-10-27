@@ -1,0 +1,20 @@
+# @package _global_
+# Claude Haiku 5.5 through OpenRouter (OpenAI-compatible API). The key comes from the environment variable
+# OPENROUTER_API_KEY or from the file ~/.config/reward_design/openrouter_key (one line, chmod 600); it is never stored here.
+# No local vLLM server is needed: start a run with scripts/run_pipeline.sh.
+model: anthropic/claude-haiku-5.5
+temperature: null  # this model does not accept temperature or top_p
+top_p: null
+max_tokens: 32000  # cap per answer, including thinking
+reasoning_effort: medium  # thinking depth of the planner and reviewer roles (stage writer and simple calls use low)
+chunk_size: 1  # one sample per request
+llm_base_url: https://openrouter.ai/api/v1
+llm_api_key_env: OPENROUTER_API_KEY
+llm_api_key_file: ~/.config/reward_design/openrouter_key
+llm_timeout: 600  # seconds per LLM request
+llm_extra_body: {}
+prompt_cache: true  # cache breakpoints at the prompts' <<<RD_CACHE>>> marks (reused prefixes are billed at the cache-read rate)
+gpus: [0, 1, 2]  # no GPU is needed for the LLM
+# a cheap, fast API model can afford more attempts per stage: the writer gets time to fix the reviewer's major findings
+stage_max_retries: 5  # 6 attempts per stage (12 cost about 31-48% more writer tokens; replay of runs 10-12: 1 clean draft lost in 70 stages)
+hacking_review_rounds: 4  # reviews per stage (a major finding goes back to the writer up to 3 times)

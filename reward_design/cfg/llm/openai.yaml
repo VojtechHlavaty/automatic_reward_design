@@ -1,0 +1,11 @@
+# @package _global_
+# OpenAI API (key from OPENAI_API_KEY)
+model: gpt-4o  # model name of the OpenAI-compatible API
+temperature: 1.0  # set to null for models that do not accept a temperature
+top_p: null
+max_tokens: null  # maximum tokens per response (null = server default)
+reasoning_effort: null  # reasoning depth for models that support it (e.g. low, medium, high); null = model default
+chunk_size: 4  # number of samples requested per API call
+llm_base_url: null  # OpenAI-compatible endpoint; null uses the OpenAI API
+llm_timeout: 600  # seconds per LLM request
+llm_extra_body: {}  # extra request fields for the server

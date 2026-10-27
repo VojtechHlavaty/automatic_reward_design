@@ -1,0 +1,10 @@
+# Install IsaacLab first (Isaac Sim 6.0, IsaacLab at commit 0603cb17, Python 3.12, PyTorch 2.10 with CUDA 12.8);
+# it provides torch, gymnasium, rsl-rl-lib (5.0.1), tensorboard, numpy and opencv. Then, in the same environment:
+hydra-core>=1.3
+omegaconf>=2.3
+PyYAML>=6.0
+jsonschema>=4.0
+openai>=1.0          # OpenAI-compatible client (also for local vLLM servers)
+transformers>=4.40   # sentence embeddings of the retrieval database
+imageio>=2.30        # rollout videos for the vision-language review
+psutil>=5.9

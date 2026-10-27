@@ -1,0 +1,25 @@
+Task: {task_description}.
+
+Subtasks, in order:
+{subtasks}
+
+Below are frames of {num_rollouts} rollouts (episodes) of the same trained policy, {frames_per_rollout} frames per rollout in time order (each rollout lasts up to {duration} s; an episode can end early on success or failure).
+A frame may be followed by a close-up of the work area; use the close-ups to see small objects and the gripper.
+Measured facts about this policy (from many simulated episodes):
+{facts}
+How to use them: rates of episodes that 'reached' a step count a step that happened at least once, even for a moment (a 'once' flag stays true for the rest of the episode); they do not say that the state holds or where the robot spends its time. The shares of time in which a state holds now, and the joints at a position limit, say what the robot mostly does. Trust the measured facts for rates and for things too small to see, but where the frames clearly show something else (e.g. the object is carried past the target and then held somewhere else, the torso turns away, an arm stays at an extreme pose), report what you see and say explicitly which measured fact it contradicts or qualifies. If the camera cannot see the object or the hand in some frames (e.g. the body hides it), say so instead of assuming where it is.
+First describe the state of every manipulated object in the frames: where it is, whether it lies flat, is tipped onto an edge or a corner, is pressed against a surface, is between the gripper's fingers and where the fingers touch it, and whether it moves with the hand. If the measured facts say that a step is reached (e.g. an object counts as grasped) but the frames show that it is reached in a degenerate way (e.g. pinched on an edge, tipped, still touching the table), say so explicitly.
+For each subtask, give the completion averaged over the rollouts, from 0 to 1 (0 = not attempted, 0.5 = partly done, 1 = fully done), and explain what you see, including differences between rollouts.
+Then describe what the robot does, the main failure modes, and what the reward function should encourage or discourage to fix them.
+Answer only with a JSON object in this format:
+```json
+{
+  "subtasks": [
+    {"name": "subtask name", "completion": 0.0, "explanation": "what is visible"}
+  ],
+  "object_state": "pose and contacts of every manipulated object over time (flat, tipped, on an edge or corner, pressed, held between the fingers, moving with the hand)",
+  "summary": "what the robot does during the rollouts",
+  "failure_modes": "what goes wrong, per subtask",
+  "suggestions": "what the reward should encourage or discourage"
+}
+```

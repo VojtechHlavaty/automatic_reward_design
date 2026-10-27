@@ -1,0 +1,4 @@
+Visual evaluation: a vision-language model watched several rollouts of the final policy of {num_reports} reward functions of this iteration and scored the average completion of each subtask (0 = not attempted, 1 = fully done). The reward functions are listed from the best to the worst visual score.
+{reports}
+Use these observations together with the training statistics. The rollouts of the other reward functions can show useful behavior that the reward function above does not produce; keep or adapt the reward terms that caused it.
+

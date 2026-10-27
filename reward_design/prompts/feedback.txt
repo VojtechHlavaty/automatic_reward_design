@@ -1,0 +1,18 @@
+Analyze this trained curriculum.
+
+Task: {task}
+
+Curriculum (stage YAMLs, trained in this order, each continuing from the previous stage):
+{curriculum}
+
+Training outcomes per stage (rates of the task flags at the end of each stage, task score, original-reward score, action noise):
+{outcomes}
+
+Visual evaluation of the final policy:
+{visual}
+
+Human feedback:
+{human}
+
+Evaluate the curriculum with this rubric: task success and progress through the task stages, stability of the behavior (smooth, deliberate motion; action noise), and efficiency (unnecessary motion or effort). Identify which stage stopped making progress and why, from the reward terms and the outcomes. Then recommend concrete changes for the next curriculum: stage boundaries, reward terms, weights, transition flags, iteration budgets, entropy coefficient.
+Answer only with a JSON object: {"analysis": "...", "recommendations": "..."}

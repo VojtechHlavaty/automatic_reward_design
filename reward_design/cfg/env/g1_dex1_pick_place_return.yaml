@@ -1,0 +1,97 @@
+task: G1-Dex1-Pick-Place-Return-v0  # IsaacLab gym task ID
+env_name: g1_dex1_pick_place  # name of the environment context file env_context/<env_name>_obs.py
+description: >-
+  to make the fixed-base Unitree G1 humanoid pick up a 5 cm cube from a table with the Unitree Dex1-1 parallel gripper on its right arm and place it into an open tray, then bring the arm back to its start pose.
+  Robot: the pelvis is fixed at (0, 0, 0.78) facing +x; the legs, waist roll and waist pitch are locked; the left arm is parked outward, away from the table, and is not controlled.
+  The right hand is a Dex1-1 two-jaw parallel gripper (no fingers, no palm): two prismatic jaws slide toward each other. Each jaw joint goes from -0.02 m (open) to +0.024 m (closed);
+  the fingertips are about 0.09 m apart when open and touch when closed, so the 5 cm cube fits only between the jaws, and when they close on it they stop about 0.055 m apart (jaw joints about -0.003 m).
+  To grasp, the cube must be centered between the jaws with the closing direction across two opposite faces of the cube: the cube's yaw is random in [-pi, pi] at every reset, so the wrist (mainly wrist yaw) has to align the jaws with the cube.
+  Actions (9, each in [-1, 1]): action 0 is the waist yaw joint target velocity (the torso can turn), actions 1-7 are right-arm joint target velocities (shoulder pitch, roll, yaw, elbow, wrist roll, pitch, yaw), each scaled to at most 1.5 rad/s and integrated into joint position targets within the joint limits;
+  action 8 is the gripper command env._hand_cmd = (action + 1) / 2: a continuous position target for both jaws, 0 = fully open, 1 = fully closed, so the squeezing force on the cube grows with the command (stiff PD drive, 800 N/m per jaw).
+  The policy observes only state, no camera images: waist-yaw and right-arm joint positions (relative to the default pose) and velocities, the two jaw joint positions, the grasp point and the cube pose in the robot frame, the grasp-point-to-cube vector, the cube-to-carry-target vector and the previous actions.
+  At each reset the waist yaw and right-arm joints start at the default pose plus uniform noise of +-0.1 rad; in the default pose the open gripper is above the table, about 0.20-0.27 m from the cube.
+  The grasp point env._palm_pos ("palm" in the code) is the midpoint between the two fingertips; env._palm_to_item is the vector from it to the cube center, which is about 0 when the cube sits centered between the jaws.
+  The cube has a mass of 0.1 kg and a friction coefficient of 1.5; the gripper holds it securely once the jaws are closed on two opposite faces.
+  All positions are in the environment-local frame (world position minus env.scene.env_origins); heights are z values.
+  An episode lasts at most 8 s (480 control steps, env.step_dt = 1/60 s).
+  Geometry: the table top is at z = 0.70 m. The cube (edge 0.05 m, bounding radius r = 0.0433 m) rests with its center at z = 0.725 m; at each reset its center is placed uniformly within +-0.05 m in x and y around the nominal pickup point (0.30, -0.15).
+  The tray is centered at (0.35, 0.20) on the table, with inner size 0.20 m, wall thickness 0.01 m and wall height 0.08 m, so the rim is at z = 0.78 m.
+  The environment computes the task state every step, before the reward, exactly as follows (cube z = env._item_pos[:, 2], grasp-point-to-cube distance d = norm(env._palm_to_item)):
+  (a) wall contact (env._wall_contact): the cube's x and y offsets from the tray center are both within 0.148 m but not both within 0.052 m (it overlaps the tray walls), while its bottom is below the rim (z - r < 0.78).
+  (b) grasped (env._grasped): d < 0.10 m AND gripper command > 0.5 AND the cube center is more than 0.01 m above its rest height (z > 0.735) AND no wall contact.
+  There are no contact sensors, so a cube that only rests on or is flicked against the closed jaws also counts as grasped.
+  (c) clear of the rim (env._clear_rim): z - r > 0.78 + 0.015, i.e. z > 0.838 (about 11 cm above the rest height).
+  (d) valid lift (env._lifted_once, latched for the rest of the episode): a timer counts the continuous time in which the cube is grasped AND clear of the rim AND its horizontal distance to the nominal pickup point (0.30, -0.15) is less than 0.10 m;
+  the timer resets to 0 as soon as one of these is false. The lift is valid when the timer reaches 0.10 s while z >= 0.845 (0.12 m above rest).
+  The cube must therefore be lifted straight up, within 10 cm of the pickup point; carrying it sideways before it is above z = 0.845 never gives a valid lift.
+  (e) above the tray (env._above_once, latched): after a valid lift, the cube is grasped, clear of the rim, and its x and y are both within 0.037 m of the tray center (0.35, 0.20).
+  env._item_to_target is the vector from the cube to the carry target 0.18 m above the tray center, (0.35, 0.20, 0.88).
+  (f) release (env._released_above): after the cube has been above the tray, the gripper command drops below 0.3 while the cube is still over the opening (x and y within 0.037 m of the tray center), more than 0.01 m above its rest height and not touching a wall; leaving the opening or touching a wall afterwards cancels the release.
+  (g) placed (env._placed, latched): after a release, the cube lies inside the tray (x and y within 0.052 m of the tray center, z between 0.730 and 0.750),
+  the grasp point is more than 0.10 m from the cube, the gripper command is below 0.3, the cube speed is below 0.10 m/s and its angular speed below 1.0 rad/s, all continuously for 0.25 s (env._settle_time counts it).
+  The placement does not end the episode.
+  (h) success (env._succeeded): after the placement, the arm is back at its start pose: the norm of the differences of the 8 arm joints (waist yaw and right arm, env._arm_ids) from env._robot.data.default_joint_pos is below 0.3 rad,
+  the norm of their speeds is below 0.5 rad/s, the gripper command is below 0.3, and the cube is still in the tray and slower than 0.10 m/s, all continuously for 0.25 s (env._return_time counts it).
+  Success ends the episode immediately. The episode also ends early when the cube falls below z = 0.60 m.
+  env._stage_bonus already contains the one-time bonuses of the original task for the step in which a stage is first reached: +3 valid lift, +10 above the tray, +5 release, +50 placed, +100 success.
+  Module constants such as TABLE_H, BOX_POS, BOX_IN or ITEM_SIZE are not attributes of env or env.cfg; use the numbers above
+success_metric: Metrics/success_rate  # TensorBoard tag used as the task score
+success_higher_is_better: True
+success_reduce: tail  # 'tail' = mean of the last 10% of training, 'max' = best value
+secondary_metric: Generated/gt_reward  # tie-breaker when task scores are equal: the original task reward
+video_length: 480  # control steps per rollout video (one 8 s episode)
+video_viewer:  # camera for rollout videos (IsaacLab ViewerCfg fields), close to the table of environment 0
+  origin_type: env
+  env_index: 0
+  eye: [1.4, -1.0, 1.35]
+  lookat: [0.32, 0.0, 0.75]
+adapter: g1_dex1_pick_place_return  # task quantities (rd_lib/quantities.py)
+stage_randomization:  # parameters a stage may set (IsaacLab env config overrides)
+  item_pos_noise:
+    min: 0.0
+    max: 0.05
+    override: env.item_pos_noise
+    description: random offset of the cube start position in x and y [m]; smaller is easier
+experiment_name: g1_dex1_table_pick_place  # RSL-RL experiment name of the task (log folder logs/rsl_rl/<experiment_name>)
+init_policy_description: ""  # describe the initial policy here when init_checkpoint is set
+scratch_policy_description: >-  # used when no init_checkpoint is given
+  Every curriculum starts from scratch: a randomly initialized policy with no prior skills (it does not reach, grasp
+  or lift yet). Plan the curriculum so that the early stages teach the reach, a secure grasp and the lift and the
+  return to the start pose is part of the plan from the start (the task is only solved when the arm is back).
+progress_flags: [secure_grasp, cube_controlled, lifted_once, above_once, cube_released, success_conditions, placed, return_conditions, succeeded]  # task steps, first to last, in the form the next step can build on (ranks policies by how far they get)
+success_flag: succeeded  # ranked by the episode success rate (the flag is true for one step only)
+action_names: [waist yaw, right shoulder pitch, right shoulder roll, right shoulder yaw, right elbow, right wrist roll, right wrist pitch, right wrist yaw, gripper]
+exploration:  # action noise of the policy (rd_lib/exploration.py); action 8 is the gripper
+  min_std: 0.3
+  min_std_final: 0.1  # the arm-action floor drops to this over each training run, so the arm can hold still (the return needs it)
+  max_std: 1.0
+  min_std_per_action: {8: 0.8}  # the gripper keeps exploring opening while it holds the cube
+  squash: {8: 1.5}  # gripper output limited to +-1.5 so it cannot saturate far beyond the clip range
+env_reference: |-
+  Environment attributes for derived quantities (read only; positions in metres, world frame unless noted;
+  env-local = world minus env.scene.env_origins; quaternions (x, y, z, w); tensors have one row per environment):
+  - env.step_dt: control step [s] (1/60). env.num_envs, env.device. env.episode_length_buf: steps since the reset.
+  - env._robot: the G1 articulation. env._robot.data.joint_pos.torch / joint_vel.torch [rad, m; rad/s]: all joints;
+    env._robot.data.default_joint_pos.torch: the start pose; env._robot.data.body_pos_w.torch / body_quat_w.torch: all
+    bodies (use h.body_pos(env, name) / h.body_quat(env, name)). env._arm_ids: indices of the 8 controlled joints
+    (waist yaw and right arm); env._hand_ids: the two jaw joints (prismatic, -0.020 m open .. +0.024 m closed with
+    nothing between them; on the 5 cm cube they stop near -0.002 m).
+  - Bodies: right_hand_Link1_3 and right_hand_Link2_3 are the two fingertips (their difference is the jaw closing
+    direction); right_hand_base_link is the gripper base; right_wrist_yaw_link the wrist.
+  - env._item: the cube (rigid object): env._item.data.root_pos_w.torch, root_quat_w.torch, root_lin_vel_w.torch,
+    root_ang_vel_w.torch. env._item_pos: cube center, env-local; env._item_quat_w: cube orientation.
+  - env._palm_pos: grasp point (midpoint between the fingertips), env-local; env._palm_to_item: cube center minus
+    grasp point.
+  - env._box_center_local: tray bottom center (0.35, 0.20, 0.70), env-local; env._carry_target_local: 0.18 m above
+    it; env._item_to_target: carry target minus cube center.
+  - env._hand_cmd[:, 0]: gripper command, 0 open .. 1 closed. env.actions / env._prev_actions: the 9 actions now and
+    in the previous step (each in [-1, 1]; action 8 is the gripper command as 2 * cmd - 1).
+  - Task flags (bool, one per environment): env._grasped, env._lifted_once (latched), env._above_once (latched),
+    env._released_above, env._wall_contact, env._placed (latched placement), env._succeeded (true in the step of
+    success; success ends the episode); env._settle_time and env._return_time: the placement and return hold timers [s];
+    env._item_in_box(): the cube lies on the tray floor.
+physical_evidence: {released_above: cube_released, grasped: secure_grasp}  # command- or position-based flag -> physical flag that must back it
+visual_crop: [0.14, 0.30, 0.70, 0.75]  # close-up of the table, cube, gripper and tray in the 1280x720 video (fractions x0, y0, x1, y1)
+obs_progress_flags: true  # the policy observes the task's latched progress flags (which step it has done)
+progress_scalars:  # partial progress counted in the evaluation (ranking and warm start) when no new step is reached
+  - {quantity: arm_error_from_start, when: placed, better: lower}

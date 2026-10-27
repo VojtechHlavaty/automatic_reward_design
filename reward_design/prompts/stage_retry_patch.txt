@@ -1,0 +1,16 @@
+The YAML above is the complete current draft of the stage. It is not valid:
+{errors}
+Fix all errors. Answer with a patch in a ```yaml block that contains only what changes, starting with `patch: true`:
+- reward.terms: only the terms you add or change (a term replaces the draft's term of the same name; give each changed term in full);
+- reward.remove: names of draft terms to drop;
+- derived: only the derived quantities you add or change (by name);
+- any other top-level key you change (training, randomization, ...), given in full.
+- a key set to null is removed (also inside reward, e.g. a setting written in the wrong place).
+Everything you leave out stays as in the draft. Example:
+```yaml
+patch: true
+reward:
+  remove: [old_term]
+  terms:
+    - {name: carry_progress, kind: shaping, quantity: object_to_target_dist, fn: inverse_ramp, params: {low: 0.0, high: 0.4}, weight: 8.0, require: [lifted]}
+```

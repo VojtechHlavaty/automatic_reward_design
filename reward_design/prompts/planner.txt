@@ -1,0 +1,35 @@
+Design a training curriculum for this task.
+
+Task: {task}
+
+Quantities that rewards and stage transitions can use:
+{quantities}
+
+Training budget: {budget} PPO iterations in total for the whole curriculum; each stage needs at least {min_iterations}. Each stage starts from the policy trained in the previous stage.
+
+Optional randomization parameters per stage:
+{randomization}
+
+Earlier curriculum retrieved from the database (with its outcome and feedback):
+{example}
+
+Feedback on the previous iteration of this curriculum design:
+{feedback}
+
+Split the task into 1 to 4 stages, from easy to hard, so that each stage teaches one new skill on top of the previous ones and the last stage optimizes the full task. Prefer few, long stages: skills such as a lift or a release typically appear only after several hundred iterations, and a stage that misses its target while still improving is extended automatically. Each stage's reward must keep paying the skills of the earlier stages (a later stage never earns less for an earlier skill), so the stages form one reward that only grows with progress; one single staged stage covering the whole task is also fine. Use as transition flags the quantities that show a step in the form the next step can build on (e.g. a secure or controlled grasp rather than a closed gripper near the object), so that a stage is not passed with a degenerate version of its skill. When the feedback reports stalled reward terms or degenerate behavior (an object tipped, pressed or pinched instead of held), plan the first stage to replace that behavior instead of building on it. If a phase was reached but not learned in a previous iteration, a stage can use a lower exploration noise for phases that need stillness, and use potential terms for progress towards a goal that ends in success; mention these in the stage notes. For each stage give:
+- name: a short snake_case name,
+- objective: what the policy learns in this stage,
+- transition: the flag quantity whose rate shows that the stage is learned, and the target rate (0-1),
+- iterations: its share of the budget (the stage budgets must sum to {budget}),
+- notes: the reward idea for the stage.
+Besides the quantities above, each stage may define derived quantities (short functions of the environment state written in the stage YAML, e.g. an alignment angle or a relative pose) for its rewards; transitions must use the flags above. Mention in notes which derived quantities a stage needs.
+Answer only with a JSON object:
+```json
+{
+  "rationale": "why this curriculum",
+  "stages": [
+    {"name": "reach", "objective": "...", "transition": {"flag": "<flag quantity>", "threshold": 0.5}, "iterations": 200, "notes": "..."}
+  ]
+}
+```
+<<<RD_CACHE>>>

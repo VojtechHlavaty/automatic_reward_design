@@ -1,0 +1,15 @@
+# run outputs, logs and the retrieval database
+reward_design/outputs/
+reward_design/vdb/
+reward_design/logs/
+logs/
+outputs/
+*.log
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+# local secrets (keys belong in environment variables or ~/.config/reward_design/)
+*.key
+.env

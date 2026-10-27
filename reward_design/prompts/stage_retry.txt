@@ -1,0 +1,3 @@
+The YAML is not valid:
+{errors}
+Fix all errors and answer only with the corrected YAML in a ```yaml block.

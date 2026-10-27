@@ -1,0 +1,150 @@
+You write the YAML of one stage of a robot training curriculum: the stage's reward (terms from a fixed library and
+optional derived quantities), its training settings and its randomization. The fixed reference comes first; the
+curriculum, the stage to write and the feedback come at the end.
+
+Rules:
+- reward.terms is a list of 1-24 terms. Each term has a unique snake_case name, a kind, a quantity and a weight.
+- kind "shaping": a bounded fn (exp_kernel, gaussian_kernel, tanh_kernel, linear_ramp, inverse_ramp or indicator) with its params and a positive weight. It rewards progress; it can be gated with require (flags that must be true) and forbid (flags that must be false).
+- kind "penalty": any fn with a negative weight (e.g. square or identity of action_rate).
+- kind "event": a one-time bonus in the step in which a flag becomes true; no fn, no params, no gates, positive weight.
+- kind "potential": potential-based shaping with a bounded fn phi of a quantity (optionally gated) and a positive weight: it pays weight * (gamma * phi(now) - phi(before)), so it pays for progress along phi (moving phi from 0 to 1 earns about weight in total), takes back what is undone, and pays nothing for waiting. Prefer it for progress towards a goal that is followed by success (e.g. distance to a target pose): per-second credit keeps paying while the policy waits just before success, a potential does not.
+- With scale_by_dt: true (recommended), shaping and penalty terms are multiplied by the control step (1/60 s), so a shaping term with weight 1 gives at most 1 per second; events are not scaled, so an event with weight 1 equals one second of a full shaping term.
+- At most {max_terms} reward terms per stage, counting the terms kept from earlier stages: count them before answering, and merge terms that pay the same thing instead of adding new ones.
+- In every stage after the first, write reward.inherit: true and list in reward.terms only the terms that are new or changed: all reward terms (and derived quantities) of the previous stage are kept as they are, a term with the same name as a previous one replaces it (give it in full), and reward.remove: [names] drops previous terms. Do not copy unchanged terms. The complete reward (previous terms plus yours) is what is checked and trained; the term limit applies to it.
+- Weights must be at most {max_abs_weight} in magnitude. Optional: training.learning_rate in {lr_range}; training.entropy_coef must stay in {entropy_range} (exploration noise is set by the framework).
+- Optional training settings for hard phases (use them when the feedback shows a phase that is reached but not learned):
+  - training.exploration: {min_std, min_std_final, max_std, per_action: {<action name>: <std>}} (each 0.05-1.0): the action noise of this stage. min_std is the noise floor, dropping linearly to min_std_final over the stage; max_std caps the noise; per_action fixes the noise of single actions. Use low noise (e.g. max_std 0.15) for phases that need stillness or precision, and a small fixed noise for actions whose noise breaks a success condition (e.g. a command that must stay below a threshold). The action names are listed in the environment reference.
+  - training.reset_critic: true starts the value function fresh (keeps the policy): use it when the reward changes a lot from the previous stage.
+  - training.gamma (0.98-0.998), training.lam (0.9-0.99), training.steps_per_env (24, 48 or 96): longer credit assignment for phases whose outcome comes seconds after the action (with steps_per_env the number of environments is reduced so that the samples per iteration stay the same).
+- randomization is optional and uses only the parameters listed below. stage.name, stage.objective and stage.transition (flag and threshold) follow the plan; training.max_iterations is given with the stage.
+- derived is optional (at most 6 entries); define only what the registered quantities cannot express.
+- One reward that only increases with progress: every state further in the task must earn more per second than every earlier state, including the skills of previous stages. Keep paying the terms of earlier skills (e.g. holding the grasp, the lift) and pay the new step more than staying at the old one. Before training, the reward is evaluated on live states at each progress level of the task; a later level that earns clearly less is rejected.
+- No reward valleys at phase changes: when one phase's credit ends before the next phase's credit starts (e.g. the grasp credit ends when the gripper opens, but the release credit starts only once the object is out of the hand), the policy is punished for crossing the gap and never tries. Give continuity credit across the transition so that every intermediate state pays at least as much as the state before it.
+- Physical conditions, not proxies: define each step by the physical state (gripper physically open, object separated from the hand, object resting inside the target, grasp centered and aligned), not by command-based flags that a policy can set without doing the step (a one-step command flick, pressing or tipping an object). Prefer the physical flags of the quantity list.
+- But where the task's own success definition is stated in terms of a command (e.g. a gripper command below a threshold), pay the command as well as the physical state, for as long as the definition requires: an actuator follows its command with a delay, so a physical flag alone is satisfied by a brief command flick and the policy learns to close again while the physical state still reads open.
+- Pay a step only in the form the next step can build on: reward the quality of a step, not its first contact or
+  its flag. A grasp is paid only when it can lift (centered, aligned with the object, stable), a placement only when the
+  object stays, a door only when the handle is held, and so on. Ask for every flag and quantity you pay: which poor
+  version of this step also satisfies it (a pinch on an edge, an object pressed or tipped against a surface, contact
+  without control)? If one exists, use a stricter quantity (secure or controlled variants, alignment, tilt, slip) or
+  gate the term on one.
+- Measure progress on the whole object, not on one reference point: a center height or distance also changes when an
+  object is only tipped, rolled or pushed. For lifting use the lowest point of the object (or require it upright); for
+  reaching a region require the whole footprint inside it; reward the object's tilt or upright state where it matters.
+- Pay moving, lifting and carrying only while the object is under control: held by a quality grasp, off its support
+  and moving with the hand (low slip). An object that is dragged, rolled or tipped must not earn carrying credit.
+- Each next step must pay clearly more than holding the previous one (at least 30% more reward per second), and the
+  credit for holding a reached state must stop growing once the state is reached, so that stalling part way never
+  pays as well as moving on. Ramps must cover the full path to the next step (e.g. from 0 to the full lift height), not
+  stop early.
+- The stage that targets the task's success must pay holding all success conditions together, exactly as the task
+  defines them (use a flag that combines them, e.g. success_conditions, and the time for which they have held), for
+  the whole required duration, and must include the success event. Paying each condition separately, or stopping the
+  credit for one of them once an earlier event happened, lets the policy satisfy them one after the other and never
+  all together for long enough. Do not pay the hold time per step without bound (e.g. a ramp of the hold time with a
+  large weight): the policy then ends the hold on purpose just before success and starts it again, because success
+  ends the episode and the reward stream. Keep the per-step hold credit small and make the success event larger than
+  all hold credit the rest of an episode could collect.
+- Finishing must pay: if success ends the episode, the success event must be larger than the reward the policy could still collect in the rest of the episode by not finishing.
+- Avoid reward hacking. The policy maximizes the sum of the terms, not the objective, and finds every shortcut:
+  - Never gate a penalty (require/forbid) on a condition the policy can switch off itself to escape it (e.g. a distance penalty that applies only while the object is lifted teaches the policy to put the object down). Gate penalties only on conditions it cannot leave cheaply, or pay positive progress rewards instead.
+  - Never make it cheaper to stop or undo a previous step than to continue.
+  - Do not reward a proxy that can be satisfied without the real event (e.g. a closed gripper anywhere, being near an object without touching it, a quantity that is high in a failure state).
+  - Before answering, ask yourself: what is the highest-reward behavior under these terms, and is it the objective?
+
+Reward functions (fn) for shaping and penalty terms:
+{functions}
+
+Derived quantities (optional): when the registered quantities cannot express what the stage needs (for example an
+alignment angle between the gripper and the object, a relative pose, the opening of the gripper or the tilt of the
+object), define new quantities in a top-level `derived` list and use them in reward terms and require/forbid gates
+like registered quantities (stage.transition.flag must still be a registered flag). Each entry has: name
+(snake_case, not the name of a registered quantity), kind (scalar or flag), description, an optional range
+[low, high] of the expected values of a scalar, and code that defines `def compute(env, q, h):` returning one value
+per environment (shape (num_envs,): float for a scalar, bool for a flag). In the code, q("<quantity>") returns a
+registered quantity or an earlier derived quantity of this stage, h are the helpers below, torch and math are
+available. No imports, no assignments to attributes or items of env or of tensors, no in-place operations.
+Before training, every derived quantity is run on live states of the environment (a short rollout of the current
+policy); errors, NaNs and values outside the declared range are reported back to you with the observed values.
+Conventions: quaternions are (x, y, z, w); env positions are world positions, so subtract env.scene.env_origins
+(the h.body_pos / h.root_pos helpers already do); angles are in radians. Prefer the helpers over your own
+quaternion math. With reward.inherit: true the previous stage's derived quantities that its terms use are kept; define only new ones.
+{helpers}
+
+Environment reference:
+{env_code}
+
+Environment interface (bodies, joints and per-environment tensors of env):
+{env_interface}
+
+Task: {task}
+
+Quantities (scalar values and boolean flags) that reward terms can use:
+{quantities}
+
+Optional randomization parameters:
+{randomization}
+
+Example of the format (the names and values are only an illustration; use the quantities of this task):
+```yaml
+stage:
+  name: reach_and_grasp
+  objective: move the grasp point to the object and close the gripper around it
+  transition:
+    flag: grasped
+    threshold: 0.5
+reward:
+  scale_by_dt: true
+  terms:
+    - name: reach
+      kind: shaping
+      quantity: grasp_point_to_object_dist
+      fn: exp_kernel
+      params: {scale: 0.1}
+      weight: 1.0
+    - name: close_near_object
+      kind: shaping
+      quantity: gripper_closure
+      fn: linear_ramp
+      params: {low: 0.3, high: 0.8}
+      weight: 0.5
+      forbid: [collision]
+    - name: first_grasp
+      kind: event
+      quantity: grasped
+      weight: 2.0
+    - name: smooth
+      kind: penalty
+      quantity: action_rate
+      fn: identity
+      weight: -0.01
+training:
+  max_iterations: 300
+derived:   # optional; only when the registered quantities are not enough
+  - name: grasp_point_above_object
+    kind: scalar
+    description: height of the grasp point above the object center [m]
+    range: [-0.1, 0.5]
+    code: |
+      def compute(env, q, h):
+          return h.body_pos(env, "gripper_link")[:, 2] - h.root_pos(env, "_object")[:, 2]
+```
+
+<<<RD_CACHE>>>
+Earlier curriculum retrieved from the database:
+{example}
+
+Feedback on the previous iteration of this curriculum design:
+{feedback}
+
+Curriculum plan:
+{plan}
+
+<<<RD_CACHE>>>
+YAML of the previous stages of this curriculum (the policy continues from them):
+{previous}
+
+Write the YAML of stage {stage_index} of {num_stages}:
+{stage_plan}
+training.max_iterations must be exactly {iterations}.
+Answer only with the YAML in a ```yaml block.
