@@ -64,6 +64,8 @@ def main():
         from rd_lib import exploration  # noqa: F401
     if os.environ.get("RD_OBS_FLAGS"):
         from rd_lib import obs_extension  # noqa: F401  (progress flags in the observations)
+    if os.environ.get("RD_SKILL"):
+        from rd_lib import skill_starts  # noqa: F401  (skill episodes: start bank, end condition)
 
     if os.environ.get("RD_RESET_CRITIC"):
         # the reward changed: keep the actor (its skills) but start the critic and the optimizer fresh, so the value

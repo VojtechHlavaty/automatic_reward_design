@@ -134,3 +134,44 @@ obs_progress_flags: true  # the policy observes the task's latched progress flag
 progress_scalars:  # partial progress counted in the evaluation (ranking and warm start) when no new step is reached
   - {quantity: base_to_cube_dist, when: before_lift, better: lower}
   - {quantity: base_to_tray_dist, when: lifted_once, better: lower}
+# skills.py: the task as a chain of skills, each learned by its own pipeline run and then put together. A skill's
+# episodes end with success when all its end_flags hold for end_hold_s; every skill after the first starts from states
+# in which the previous skill ended (start: previous). init: initial = the run's initial policy (--init_checkpoint),
+# previous = the final policy of the previous skill.
+skill_match: [_item_size, _tray_inner, _tray_wall_h]  # spawn-time properties a recorded start state must match
+skills:
+  - name: walk_to_cube_table
+    objective: walk from the start to the cube table and stop within reach of the cube, the left camera on the right hand
+    start: task
+    start_text: as in the task, 1-5 m from the cube table
+    end_flags: [at_cube_table]
+    end_hold_s: 0.5
+    end_text: the robot base stands within reach of the cube (at_cube_table)
+    progress_flags: [at_cube_table]
+    init: initial
+  - name: pick_and_lift
+    objective: grasp the cube with the right gripper and lift it clear (a valid lift), the left camera on the right hand
+    start: previous
+    start_text: where the walk to the cube table ended, with the robot standing within reach of the cube and the cube lying on the table
+    end_flags: [lifted_once, cube_controlled, clear_rim]
+    end_hold_s: 0.25
+    end_text: after a valid lift the cube is held off the cube table, moving with the hand, above the tray rim height (lifted_once, cube_controlled, clear_rim)
+    progress_flags: [secure_grasp, cube_controlled, lifted_once]
+    init: initial
+  - name: carry_over_tray
+    objective: walk to the tray table holding the cube and bring it over the tray opening, the left camera on the right hand
+    start: previous
+    start_text: where the pick ended, with the robot standing at the cube table holding the lifted cube
+    end_flags: [above_once, cube_over_opening, secure_grasp]
+    end_hold_s: 0.25
+    end_text: the cube is held securely over the tray opening, clear of the rim (above_once, cube_over_opening, secure_grasp)
+    progress_flags: [carried_to_tray_table, above_once]
+    init: previous
+  - name: release_into_tray
+    objective: release the cube into the tray, move the hand away and let it come to rest (the task's success)
+    start: previous
+    start_text: where the carry ended, with the cube held over the tray opening
+    end_flags: []
+    end_text: the task's own success
+    progress_flags: [cube_released, success_conditions]
+    init: previous

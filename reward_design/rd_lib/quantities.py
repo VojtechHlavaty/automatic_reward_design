@@ -12,6 +12,7 @@ be unique over all tasks. This module holds no task knowledge.
 """
 
 import importlib.util
+import json
 import os
 from dataclasses import dataclass
 from typing import Callable
@@ -75,7 +76,14 @@ def get_adapter(name):
     if name not in adapters:
         raise KeyError(f"Unknown task adapter '{name}'. Known adapters (from {TASKS_DIR}/*/quantities.py): "
                        f"{sorted(adapters)}")
-    return adapters[name]()
+    quantities = adapters[name]()
+    skill = json.loads(os.environ.get("RD_SKILL") or "{}")
+    if skill.get("end_flags") and "succeeded" in quantities:
+        # a skill run of skills.py: success is the skill's end condition (rd_lib/skill_starts.py)
+        quantities["succeeded"].description = (
+            f"success of this skill: {', '.join(skill['end_flags'])} all hold continuously for "
+            f"{skill.get('end_hold_s', 0.0)} s (ends the episode; the next skill starts from there)")
+    return quantities
 
 
 def get_funnel(name):

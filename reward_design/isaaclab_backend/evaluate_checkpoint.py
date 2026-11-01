@@ -46,6 +46,8 @@ if os.environ.get("RD_EXPLORATION"):
     from rd_lib import exploration  # noqa: F401,E402  (the same output squashing as in training)
 if os.environ.get("RD_OBS_FLAGS"):
     from rd_lib import obs_extension  # noqa: F401,E402  (progress flags in the observations)
+if os.environ.get("RD_SKILL"):
+    from rd_lib import skill_starts  # noqa: F401,E402  (skill episodes: start bank, end condition)
 from rd_lib.quantities import get_adapter, get_funnel, get_hold  # noqa: E402
 from rsl_rl.runners import OnPolicyRunner  # noqa: E402
 

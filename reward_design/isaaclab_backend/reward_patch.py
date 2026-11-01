@@ -268,6 +268,10 @@ def make_env(cfg, render_mode: str | None = None, base_entry_point=None, **kwarg
     install_reward_hook(env, hook)
     if os.environ.get("RD_ROBOT_SPEED"):
         robot_speed.patch_env(env)  # after the reward hook: scales the patched per-step reward
+    if os.environ.get("RD_SKILL"):
+        from rd_lib import skill_starts
+
+        skill_starts.install(env)  # before hard-case starts: their snapshots then hold the skill's start states
     if os.environ.get("RD_HARD_STARTS"):
         from rd_lib import hard_starts
 

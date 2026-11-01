@@ -68,47 +68,22 @@ def _torch(x):
     return x.torch if hasattr(x, "torch") else x
 
 
-class HardStarts:
-    def __init__(self, env, settings):
-        from rd_lib.quantities import get_adapter
+class SceneState:
+    """Reads and writes the full state of chosen environments: the root pose and velocity of every articulation and
+    rigid object of the scene, the joint positions and velocities of every articulation, and every per-environment
+    tensor attribute of the env and of its own helper objects one level down (found at the first reset, after the env's
+    init). With ``local`` the poses are relative to each environment's origin, so a state can be written into another
+    environment than the one it was read from (rd_lib/skill_starts.py)."""
 
+    def __init__(self, env):
         self.env = env
         self.n = env.num_envs
         self.device = env.device
-        self.prob = float(settings.get("prob", 0.25))
-        self.slots = int(settings.get("slots", 4))
-        self.max_tries = int(settings.get("max_tries", 3))
-        quantities = get_adapter(settings["adapter"])
-        self.success_fn = quantities[settings.get("success_flag", "succeeded")].fn
-        self.progress_prob = float(settings.get("progress_prob", 0.0))
-        self.commit_steps = int(settings.get("progress_commit_steps", 25))
-        self.progress_names = [f for f in settings.get("progress_flags") or [] if f in quantities]
-        if self.progress_prob <= 0.0:
-            self.progress_names = []
-        self.progress_fns = [quantities[f].fn for f in self.progress_names]
-        nf = len(self.progress_names)
-        self.seen = torch.zeros(self.n, max(nf, 1), dtype=torch.bool, device=self.device)
-        self.bank = None  # name -> tensor [flags, num_envs, ...]: kept state per flag
-        self.bank_valid = torch.zeros(max(nf, 1), self.n, dtype=torch.bool, device=self.device)
-        self.pending = None  # name -> tensor [num_envs, ...]: snapshot waiting for progress_commit_steps
-        self.pending_flag = torch.full((self.n,), -1, dtype=torch.long, device=self.device)
-        self.pending_step = torch.zeros(self.n, dtype=torch.long, device=self.device)
-        self.progress_active = torch.zeros(self.n, dtype=torch.bool, device=self.device)
         scene = env.scene
         self.articulations = list(scene.articulations.values())
         self.rigid_objects = list(scene.rigid_objects.values())
-        self.tensor_names = None  # per-environment env attributes, found at the first reset (after the env's init)
-        self.stored = None  # name -> tensor [slots, num_envs, ...] of failed start states
-        self.current = None  # name -> tensor [num_envs, ...]: start state of the running episode
-        self.valid = torch.zeros(self.slots, self.n, dtype=torch.bool, device=self.device)
-        self.tries = torch.zeros(self.slots, self.n, dtype=torch.long, device=self.device)
-        self.next_slot = torch.zeros(self.n, dtype=torch.long, device=self.device)
-        self.replay_slot = torch.full((self.n,), -1, dtype=torch.long, device=self.device)
-        self.replay_active = torch.zeros(self.n, dtype=torch.bool, device=self.device)
-        self.counts = {"episodes": 0, "replays": 0, "replay_successes": 0, "stored": 0, "progress_starts": 0,
-                       "progress_successes": 0, "progress_ended": 0, "progress_kept": 0}
+        self.tensor_names = None
 
-    # -- state -------------------------------------------------------------------------------------------------
     def _per_env(self, value):
         return (isinstance(value, torch.Tensor) and value.dim() > 0 and value.shape[0] == self.n
                 and not value.requires_grad and value.numel() // self.n <= 4096)
@@ -134,9 +109,10 @@ class HardStarts:
             value = getattr(value, part)
         return value
 
-    def _read(self, ids):
+    def _read(self, ids, local=False):
         """State of these environments: name -> tensor [len(ids), ...]."""
         state = {"env." + ".".join(path): self._tensor(path)[ids].clone() for path in self.tensor_names}
+        origin = self.env.scene.env_origins[ids] if local else None
         for k, art in enumerate(self.articulations):
             d = art.data
             state[f"art{k}.pose"] = _torch(d.root_link_pose_w)[ids].clone()
@@ -147,11 +123,21 @@ class HardStarts:
             d = obj.data
             state[f"obj{k}.pose"] = _torch(d.root_link_pose_w)[ids].clone()
             state[f"obj{k}.vel"] = _torch(d.root_com_vel_w)[ids].clone()
+        if local:
+            for key in state:
+                if key.endswith(".pose"):
+                    state[key][:, :3] -= origin
         return state
 
-    def _write(self, ids, state):
+    def _write(self, ids, state, local=False, skip=()):
         for path in self.tensor_names:
-            self._tensor(path)[ids] = state["env." + ".".join(path)]
+            key = "env." + ".".join(path)
+            if key in state and key not in skip:
+                self._tensor(path)[ids] = state[key]
+        if local:
+            origin = self.env.scene.env_origins[ids]
+            state = {k: (torch.cat((v[:, :3] + origin, v[:, 3:]), dim=-1) if k.endswith(".pose") else v)
+                     for k, v in state.items()}
         for k, art in enumerate(self.articulations):
             art.write_root_pose_to_sim_index(root_pose=state[f"art{k}.pose"], env_ids=ids)
             art.write_root_velocity_to_sim_index(root_velocity=state[f"art{k}.vel"], env_ids=ids)
@@ -164,6 +150,41 @@ class HardStarts:
                 obj.write_root_velocity_to_sim_index(root_velocity=state[f"obj{k}.vel"], env_ids=ids)
             except Exception:  # noqa: BLE001  (kinematic bodies take no velocity)
                 pass
+
+
+class HardStarts(SceneState):
+    def __init__(self, env, settings):
+        from rd_lib.quantities import get_adapter
+
+        super().__init__(env)
+        self.prob = float(settings.get("prob", 0.25))
+        self.slots = int(settings.get("slots", 4))
+        self.max_tries = int(settings.get("max_tries", 3))
+        quantities = get_adapter(settings["adapter"])
+        self.success_fn = quantities[settings.get("success_flag", "succeeded")].fn
+        self.progress_prob = float(settings.get("progress_prob", 0.0))
+        self.commit_steps = int(settings.get("progress_commit_steps", 25))
+        self.progress_names = [f for f in settings.get("progress_flags") or [] if f in quantities]
+        if self.progress_prob <= 0.0:
+            self.progress_names = []
+        self.progress_fns = [quantities[f].fn for f in self.progress_names]
+        nf = len(self.progress_names)
+        self.seen = torch.zeros(self.n, max(nf, 1), dtype=torch.bool, device=self.device)
+        self.bank = None  # name -> tensor [flags, num_envs, ...]: kept state per flag
+        self.bank_valid = torch.zeros(max(nf, 1), self.n, dtype=torch.bool, device=self.device)
+        self.pending = None  # name -> tensor [num_envs, ...]: snapshot waiting for progress_commit_steps
+        self.pending_flag = torch.full((self.n,), -1, dtype=torch.long, device=self.device)
+        self.pending_step = torch.zeros(self.n, dtype=torch.long, device=self.device)
+        self.progress_active = torch.zeros(self.n, dtype=torch.bool, device=self.device)
+        self.stored = None  # name -> tensor [slots, num_envs, ...] of failed start states
+        self.current = None  # name -> tensor [num_envs, ...]: start state of the running episode
+        self.valid = torch.zeros(self.slots, self.n, dtype=torch.bool, device=self.device)
+        self.tries = torch.zeros(self.slots, self.n, dtype=torch.long, device=self.device)
+        self.next_slot = torch.zeros(self.n, dtype=torch.long, device=self.device)
+        self.replay_slot = torch.full((self.n,), -1, dtype=torch.long, device=self.device)
+        self.replay_active = torch.zeros(self.n, dtype=torch.bool, device=self.device)
+        self.counts = {"episodes": 0, "replays": 0, "replay_successes": 0, "stored": 0, "progress_starts": 0,
+                       "progress_successes": 0, "progress_ended": 0, "progress_kept": 0}
 
     # -- reset -------------------------------------------------------------------------------------------------
     def reset(self, original, env_ids):

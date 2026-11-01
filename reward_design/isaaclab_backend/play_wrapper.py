@@ -29,6 +29,8 @@ def main():
                 from rd_lib import exploration  # noqa: F401
             if os.environ.get("RD_OBS_FLAGS"):
                 from rd_lib import obs_extension  # noqa: F401
+            if os.environ.get("RD_SKILL"):
+                from rd_lib import skill_starts  # noqa: F401  (skill episodes: start bank, end condition)
             from isaaclab_backend.tasks_import import register_tasks
 
             register_tasks()  # the tasks of this repository (tasks/)

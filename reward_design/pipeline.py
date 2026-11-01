@@ -798,7 +798,9 @@ def run_pipeline(cfg, launcher):
     # optional: the task's progress flags (except the success flag, which ends the episode) as extra observation
     # inputs of the policy, in every process of this run (rd_lib/obs_extension.py)
     if cfg.env.get("obs_progress_flags"):
-        obs_flags = [f for f in progress_flags(cfg) if f != cfg.env.get("success_flag")]
+        # env.obs_flags: an explicit list (a skill run of skills.py observes the flags of the whole task chain, so that
+        # all skill policies of the chain take the same observation)
+        obs_flags = list(cfg.env.get("obs_flags") or [f for f in progress_flags(cfg) if f != cfg.env.get("success_flag")])
         os.environ["RD_OBS_FLAGS"] = json.dumps({"adapter": cfg.env.adapter, "flags": obs_flags})
         logging.info(f"Progress flags appended to the policy observations: {obs_flags}")
 
