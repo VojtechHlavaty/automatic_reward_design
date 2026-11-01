@@ -20,6 +20,7 @@ Every artifact is written to a file, so an interrupted run continues where it st
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -348,9 +349,19 @@ def stage_outcome(cfg, log_dir, spec, flags):
                 stalled_terms.append(f"{term['name']}{gate_text}: flat at {100 * end:.0f}% of its maximum where it applies "
                                      f"since the middle of the stage{occupancy}")
     series = episode_series or logs.get(f"Generated/metric_{transition['flag']}") or []
-    window = max(len(series) // 10, 1)
-    still_rising = (len(series) >= 4 * window and
-                    sum(series[-window:]) / window > sum(series[-3 * window:-2 * window]) / window + 0.03)
+    window = max(len(series) // 5, 1)
+    # rising: the last fifth of the stage clearly above the fifth before it (by 0.03, or for a rare flag by a quarter
+    # of its level and at least 0.003), and by more than twice the noise of the difference (the logged rate jitters,
+    # more so with progress starts)
+    if len(series) >= 3 * window and window >= 2:
+        recent, earlier = series[-window:], series[-2 * window:-window]
+        last, before = sum(recent) / window, sum(earlier) / window
+        var = lambda xs, m: sum((x - m) ** 2 for x in xs) / (len(xs) - 1)  # noqa: E731
+        noise = math.sqrt((var(recent, last) + var(earlier, before)) / window)
+        still_rising = (last > before + 0.03 or (last > 1.25 * before and last > before + 0.003)) and \
+            last - before > 2 * noise
+    else:
+        still_rising = False
     return {
         "exploration": exploration,
         "exploration_warnings": exploration_warnings,
@@ -406,21 +417,33 @@ def train_curricula(cfg, launcher, jobs, randomization_options, flags, seed=None
         outcome["threshold"] = job["spec"]["stage"]["transition"]["threshold"]
         results[key].append(outcome)
         next_stage[key] = s + 1
-        # extend a stage that missed its target while its key metric was still rising: same reward, continued from
-        # its own checkpoint (at most stage_extensions per curriculum, each stage_extension_share of the budget)
+        # extend a stage that missed its target while its key metric is still rising: same reward, continued from
+        # its own checkpoint, again after each extension while the metric keeps rising (at most stage_extensions
+        # per stage, each stage_extension_share of the budget, all of a curriculum's extensions together at most
+        # stage_extension_budget of it); a stage whose metric has stopped rising moves on
         used = sum(1 for j in jobs[key] if j.get("continue_from") is not None)
-        if (not outcome["transition_reached"] and outcome["still_rising"] and used < cfg.get("stage_extensions", 0)):
-            extension = dict(job, continue_from=s, yaml_index=job.get("yaml_index", s))
+        rounds = job.get("extension_round", 0)
+        length = max(cfg.min_stage_iterations, int(cfg.curriculum_iterations * cfg.get("stage_extension_share", 0.25)))
+        spent = sum(j["spec"]["training"]["max_iterations"] for j in jobs[key] if j.get("continue_from") is not None)
+        budget = cfg.curriculum_iterations * cfg.get("stage_extension_budget", 1.0)
+        # an extension is extended again only if it raised the measured transition rate of the round before it
+        improved = rounds == 0 or outcome["transition_rate"] > job.get("previous_rate", 0.0) + 0.01
+        if (not outcome["transition_reached"] and outcome["still_rising"] and improved
+                and rounds < cfg.get("stage_extensions", 0) and spent + length <= budget):
+            extension = dict(job, continue_from=s, yaml_index=job.get("yaml_index", s), extension_round=rounds + 1,
+                             previous_rate=outcome["transition_rate"])
             spec = json.loads(json.dumps(job["spec"]))
-            spec["training"]["max_iterations"] = max(
-                cfg.min_stage_iterations, int(cfg.curriculum_iterations * cfg.get("stage_extension_share", 0.25)))
+            spec["training"]["max_iterations"] = length
             extension["spec"] = spec
-            extension["log_file"] = job["log_file"].replace(".txt", f"_ext{used + 1}.txt")
-            extension["run_name"] = f"{job['run_name']}_ext{used + 1}"
+            base_log = job.get("base_log_file", job["log_file"])
+            base_name = job.get("base_run_name", job["run_name"])
+            extension.update(base_log_file=base_log, base_run_name=base_name)
+            extension["log_file"] = base_log.replace(".txt", f"_ext{used + 1}.txt")
+            extension["run_name"] = f"{base_name}_ext{used + 1}"
             jobs[key].insert(s + 1, extension)
             logging.info(f"{job['run_name']}: {outcome['transition_flag']} still rising "
                          f"({outcome['transition_rate']:.3f} < {outcome['threshold']}); extending the stage by "
-                         f"{spec['training']['max_iterations']} iterations")
+                         f"{length} iterations (round {rounds + 1})")
         logging.info(
             f"{job['run_name']}: task score {outcome['task_score']:.3g}, gt {outcome['gt_score']:.3g}, "
             f"{outcome['transition_flag']} rate {outcome['transition_rate']:.3f} "
@@ -756,12 +779,18 @@ def run_pipeline(cfg, launcher):
         os.environ["RD_BATCHED_STATS"] = "1"
     else:
         os.environ["RD_BATCHED_STATS"] = "0"
+    # the success flag of the task, for the reward compiler: potential terms end in 0 when an episode ends by
+    # termination without it (rd_lib/reward_registry.py)
+    os.environ["RD_SUCCESS_FLAG"] = cfg.env.get("success_flag") or "succeeded"
     # hard-case starts (rd_lib/hard_starts.py): a share of the training episodes restart from start states in which
     # the policy failed; replayed episodes are left out of the training statistics
     hard = cfg.get("hard_starts")
-    if hard and float(hard.get("prob", 0.0)) > 0.0:
+    if hard and (float(hard.get("prob", 0.0)) > 0.0 or float(hard.get("progress_prob", 0.0)) > 0.0):
         settings = dict(OmegaConf.to_container(hard, resolve=True))
         settings.update(adapter=cfg.env.adapter, success_flag=cfg.env.get("success_flag") or "succeeded")
+        # progress starts: the task's progress flags in task order, without the flags that end the episode
+        ending = set(cfg.env.get("episode_end_flags") or []) | {settings["success_flag"]}
+        settings["progress_flags"] = [f for f in progress_flags(cfg) if f not in ending]
         os.environ["RD_HARD_STARTS"] = json.dumps(settings)
         logging.info(f"Hard-case starts: {os.environ['RD_HARD_STARTS']}")
     else:

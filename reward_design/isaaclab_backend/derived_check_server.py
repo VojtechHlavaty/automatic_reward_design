@@ -32,14 +32,14 @@ import importlib.metadata as metadata  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
 import isaaclab_tasks  # noqa: F401, E402
 from isaaclab_backend.tasks_import import register_tasks  # noqa: E402
 
 register_tasks()  # the tasks of this repository (tasks/)
 from isaaclab_tasks.utils.hydra import hydra_task_config  # noqa: E402
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT_DIR)
 from rd_lib import helpers  # noqa: E402
 from rd_lib.derived import check_value, compile_derived, static_errors  # noqa: E402
 from rd_lib.quantities import get_adapter  # noqa: E402

@@ -10,7 +10,10 @@ condition they reached) and replayed kinematically for the camera:
 * dense frames around the critical moment: when the last reached condition was lost again (e.g. the object left the
   target after a release), or else when it was reached (the policy made no further progress after it).
 
-With a ``visual_crop`` (fractions x0, y0, x1, y1 of the frame) the dense frames are close-ups of the work area. A
+The camera is the env config's viewer, moved to each replayed environment; a task whose environment has a method
+``review_camera_view(env_id) -> (eye, target)`` (world positions) gets that view for every frame instead (e.g. a
+camera that follows a walking robot). With a ``visual_crop`` (fractions x0, y0, x1, y1 of the frame) the dense
+frames are close-ups of the work area. A
 timeline of every success condition (when it became true, when it was lost) is written with the frames. Optionally,
 a short clip of each critical window is saved for the human reviewer. Writes ``failures.json`` into ``--out_dir``.
 
@@ -47,6 +50,8 @@ sys.argv = [sys.argv[0]] + remaining
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
 import isaaclab_tasks  # noqa: F401, E402
 from isaaclab_backend.tasks_import import register_tasks  # noqa: E402
 
@@ -54,8 +59,6 @@ register_tasks()  # the tasks of this repository (tasks/)
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg  # noqa: E402
 from isaaclab_tasks.utils.hydra import hydra_task_config  # noqa: E402
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT_DIR)
 if os.environ.get("RD_EXPLORATION"):
     from rd_lib import exploration  # noqa: F401,E402  (the same output squashing as in training)
 if os.environ.get("RD_OBS_FLAGS"):
@@ -196,6 +199,7 @@ def main(env_cfg, agent_cfg):
         env0 = int(getattr(u.cfg.viewer, "env_index", 0))
         local = getattr(u.cfg.viewer, "origin_type", "env") == "env"
         crop = json.loads(args_cli.crop) if args_cli.crop else None
+        follow = hasattr(u, "review_camera_view")
         u.render()  # creates the recording camera
 
         def place_camera(e):
@@ -222,6 +226,11 @@ def main(env_cfg, agent_cfg):
                     pass
             u.scene.write_data_to_sim()
             u.sim.forward()
+            if follow:
+                # the task's camera for this state (the image lags the camera by a few frames: render more)
+                eye, target = u.review_camera_view(e)
+                ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=list(eye), target=list(target))
+                settle = max(settle, 12)
             frame = None
             for _ in range(settle):
                 frame = u.render()

@@ -4,6 +4,7 @@ Fix all errors. Answer with a patch in a ```yaml block that contains only what c
 - reward.terms: only the terms you add or change (a term replaces the draft's term of the same name; give each changed term in full);
 - reward.remove: names of draft terms to drop;
 - derived: only the derived quantities you add or change (by name);
+- derived_remove: names of draft derived quantities to drop (derived quantities that no term, gate or other derived quantity uses are dropped anyway);
 - any other top-level key you change (training, randomization, ...), given in full.
 - a key set to null is removed (also inside reward, e.g. a setting written in the wrong place).
 Everything you leave out stays as in the draft. Example:

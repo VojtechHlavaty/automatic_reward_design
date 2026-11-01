@@ -33,6 +33,8 @@ sys.argv = [sys.argv[0]] + remaining
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
 import isaaclab_tasks  # noqa: F401, E402
 from isaaclab_backend.tasks_import import register_tasks  # noqa: E402
 
@@ -40,8 +42,6 @@ register_tasks()  # the tasks of this repository (tasks/)
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg  # noqa: E402
 from isaaclab_tasks.utils.hydra import hydra_task_config  # noqa: E402
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT_DIR)
 if os.environ.get("RD_EXPLORATION"):
     from rd_lib import exploration  # noqa: F401,E402  (the same output squashing as in training)
 if os.environ.get("RD_OBS_FLAGS"):

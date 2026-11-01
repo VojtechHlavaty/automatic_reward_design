@@ -26,7 +26,7 @@ entropy_coef_range: [0.0, 0.0]  # no entropy bonus: with clipped actions it grow
 learning_rate_range: [1.0e-5, 1.0e-3]  # allowed training.learning_rate in a stage YAML
 default_entropy_coef: 0.0  # entropy coefficient of stages that set none
 max_abs_weight: 200  # maximum magnitude of a reward-term weight
-warm_start_across_iterations: False  # start each curriculum from the best policy so far (best stage of the best curriculum; False = from the initial policy)
+warm_start_across_iterations: True  # start each curriculum from the best policy so far (best stage of the best curriculum; False = from the initial policy)
 init_checkpoint: null  # RSL-RL checkpoint every curriculum starts from (e.g. a pretrained or behavior-cloned policy); null = from scratch; needs env.experiment_name
 derived_quantities: True  # the LLM may define new quantities in stage YAMLs (Python functions of the env state), checked on live states
 stage_rollback: True  # start each stage from the best stage so far of its curriculum (by env.progress_flags), not always from the previous one
@@ -52,6 +52,12 @@ hard_starts:
   prob: 0.25
   slots: 4
   max_tries: 3
+  # progress starts: when one of the task's progress flags (env.progress_flags, in task order; not the success flag)
+  # first becomes true in an episode and the episode goes on for progress_commit_steps more steps, that state is kept
+  # (one per environment and flag); this share of the resets restarts from the kept state of the furthest flag, so the
+  # later steps of the task are practised before the policy gets there on its own. 0 = off.
+  progress_prob: 0.3
+  progress_commit_steps: 25
 
 # Visual evaluation of the final policies (also: --visual); needs a model that accepts images
 visual: False
@@ -83,8 +89,9 @@ max_runs_per_gpu: 3  # concurrent training runs per GPU
 train_timeout: null  # seconds before a training run is killed (null = no limit)
 
 # Stage extensions, checkpoint evaluation and the reward-ordering check
-stage_extensions: 2  # per curriculum: extend a stage that missed its target while its key metric was still rising
+stage_extensions: 3  # per stage: extend a stage that missed its target while its key metric is still rising (again after each extension)
 stage_extension_share: 0.25  # length of an extension as a share of curriculum_iterations
+stage_extension_budget: 1.0  # per curriculum: all extensions together at most this share of curriculum_iterations
 checkpoint_evaluation: True  # deterministic evaluation of each candidate's best checkpoint (success rate + condition breakdown)
 eval_num_envs: 256
 eval_episodes_per_env: 3

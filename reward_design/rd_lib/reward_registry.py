@@ -8,7 +8,9 @@ A reward is a list of terms. Each term has a ``kind``:
 * ``potential``: potential-based shaping, weight * (gamma * phi(s_t+1) - phi(s_t)) with phi a bounded transform of
   one quantity (optionally gated): it pays for progress along phi (a full traversal of phi from 0 to 1 earns about
   ``weight`` in total) and takes back what is undone, so neither standing still nor oscillating pays, and it does
-  not change which behavior is optimal (it is not scaled by the time step).
+  not change which behavior is optimal (it is not scaled by the time step). An episode that ends by termination
+  without success (e.g. the robot fell) ends in phi = 0, as the theory requires (Ng et al. 1999): it gives back what
+  the potential paid, so ending the episode early never pays. Time-outs and successful endings keep phi.
 
 ``shaping`` and ``penalty`` terms can be gated: ``require`` lists flags that must be true, ``forbid`` lists flags
 that must be false. Continuous terms are multiplied by the control time step when ``scale_by_dt`` is true, so
@@ -90,6 +92,10 @@ def build_reward_fn_from_spec(spec):
     previous_flags = {}
     previous_potentials = {}
     gamma = float(os.environ.get("RD_GAMMA", "0.99"))
+    # the task's success flag (set by the pipeline): a successful ending keeps phi, any other termination ends in 0
+    success_flag = os.environ.get("RD_SUCCESS_FLAG") or None
+    if success_flag is not None and success_flag not in quantities:
+        success_flag = None
 
     def compute_reward(env):
         cache = {}
@@ -104,6 +110,12 @@ def build_reward_fn_from_spec(spec):
             return cache[name]
 
         dt = env.step_dt if scale_by_dt else 1.0
+        # environments whose episode ends in this step by termination without success: their potentials end in 0
+        failed_end = getattr(env, "reset_terminated", None)
+        if failed_end is not None:
+            failed_end = failed_end.bool()
+            if success_flag is not None:
+                failed_end = failed_end & ~value_of(success_flag).bool()
         total = torch.zeros(env.num_envs, device=env.device)
         components = {}
         for term in terms:
@@ -112,6 +124,11 @@ def build_reward_fn_from_spec(spec):
                 previous = previous_flags.get(term["name"])
                 if previous is None or previous.shape != flag.shape:
                     previous = torch.zeros_like(flag)
+                start = getattr(env, "episode_length_buf", None)
+                if start is not None:
+                    # a flag already set on an episode's first step (an episode restarted from a mid-task state,
+                    # rd_lib/hard_starts.py) was not reached in this episode: no event
+                    previous = torch.where(start <= 1, flag, previous)
                 previous_flags[term["name"]] = flag.clone()
                 contribution = float(term["weight"]) * (flag & ~previous).float()
             elif term["kind"] == "potential":
@@ -134,7 +151,8 @@ def build_reward_fn_from_spec(spec):
                 if start is not None:
                     previous = torch.where(start <= 1, phi, previous)
                 previous_potentials[term["name"]] = phi.clone()
-                contribution = float(term["weight"]) * (gamma * phi - previous)
+                phi_next = phi if failed_end is None else torch.where(failed_end, torch.zeros_like(phi), phi)
+                contribution = float(term["weight"]) * (gamma * phi_next - previous)
                 total = total + contribution
                 components[term["name"]] = contribution
                 if float(term["weight"]) > 0:

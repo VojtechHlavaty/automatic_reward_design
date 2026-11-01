@@ -1,0 +1,23 @@
+#usda 1.0
+(
+    defaultPrim = "g1_29dof_with_hand_rev_1_0"
+)
+
+def "g1_29dof_with_hand_rev_1_0" (
+    prepend references = @../../g1_dex1_table/assets/g1_29dof_dex1_unitree/g1_29dof_with_dex1_base_fix1.usd@
+)
+{
+    over "root_joint" (
+        active = false
+        delete apiSchemas = ["PhysicsArticulationRootAPI"]
+    )
+    {
+    }
+
+    over "pelvis" (
+        prepend apiSchemas = ["PhysicsArticulationRootAPI"]
+    )
+    {
+    }
+}
+

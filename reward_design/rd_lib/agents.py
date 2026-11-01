@@ -22,7 +22,7 @@ from review import fill, parse_json_object
 from .derived import describe_derived
 from .quantities import describe
 from .reward_registry import describe_functions
-from .schema import MAX_TERMS, validate_stage
+from .schema import MAX_DERIVED, MAX_TERMS, validate_stage
 
 PROMPT_NAMES = [
     "system", "query", "selector", "planner", "stage", "stage_retry", "stage_retry_patch", "feedback", "hacking_review",
@@ -199,6 +199,32 @@ def _merge_named(base, items, remove=()):
     return merged + [i for i in items if i.get("name") in replaced]
 
 
+def prune_derived(stage, keep=()):
+    """The stage with only the derived quantities that something uses (a reward term, a gate or another used derived
+    quantity), plus those named in ``keep``."""
+    derived = stage.get("derived")
+    if not derived:
+        return stage
+    used = set(keep)
+    for term in (stage.get("reward") or {}).get("terms") or []:
+        used |= {term.get("quantity"), *(term.get("require") or []), *(term.get("forbid") or [])}
+    changed = True
+    while changed:
+        changed = False
+        for d in derived:
+            if d.get("name") not in used:
+                continue
+            for other in derived:
+                name = other.get("name")
+                if name not in used and (f"'{name}'" in str(d.get("code", "")) or f'"{name}"' in str(d.get("code", ""))):
+                    used.add(name)
+                    changed = True
+    stage = dict(stage, derived=[d for d in derived if d.get("name") in used])
+    if not stage["derived"]:
+        stage.pop("derived")
+    return stage
+
+
 def expand_stage(stage, previous_stage):
     """A stage written with ``reward.inherit: true`` keeps the reward terms (and derived quantities) of the previous
     stage: its own terms are added, or replace a term of the same name, and ``reward.remove`` drops terms. Returns the
@@ -219,35 +245,18 @@ def expand_stage(stage, previous_stage):
     merged["terms"] = _merge_named(old.get("terms"), reward.get("terms"), reward.get("remove"))
     stage = dict(stage, reward=merged)
     if previous_stage.get("derived") or stage.get("derived"):
-        derived = _merge_named(previous_stage.get("derived"), stage.get("derived"))
-        own = {d.get("name") for d in stage.get("derived") or []}
-        # inherited derived quantities are kept only while something still uses them (a term, a gate or another
-        # derived quantity), so that the stage's derived list does not grow with every stage
-        used = set()
-        for term in merged["terms"]:
-            used |= {term.get("quantity"), *(term.get("require") or []), *(term.get("forbid") or [])}
-        changed = True
-        while changed:
-            changed = False
-            for d in derived:
-                if (d.get("name") in used or d.get("name") in own) and d.get("name") not in used | {None}:
-                    used.add(d.get("name"))
-                if d.get("name") in used:
-                    for other in derived:
-                        if other.get("name") not in used and f"'{other.get('name')}'" in str(d.get("code", "")) or \
-                                other.get("name") not in used and f'"{other.get("name")}"' in str(d.get("code", "")):
-                            used.add(other.get("name"))
-                            changed = True
-        stage["derived"] = [d for d in derived if d.get("name") in used or d.get("name") in own]
-        if not stage["derived"]:
-            stage.pop("derived")
+        stage["derived"] = _merge_named(previous_stage.get("derived"), stage.get("derived"))
+        # inherited derived quantities are kept only while something still uses them, so that the stage's derived
+        # list does not grow with every stage
+        stage = prune_derived(stage, keep={d.get("name") for d in stage.get("derived") or []
+                                           if d not in (previous_stage.get("derived") or [])})
     return stage
 
 
 def apply_patch(current, patch):
     """A retry answer marked ``patch: true`` changes only what it lists: reward terms (added or replacing the term of
     the same name), ``reward.remove`` (terms dropped), derived quantities (by name) and any other top-level key
-    (replaced as a whole). Returns the complete stage."""
+    (replaced as a whole), ``derived_remove`` (derived quantities dropped). Returns the complete stage."""
     patch = dict(patch)
     patch.pop("patch", None)
     stage = {k: v for k, v in current.items()}
@@ -259,8 +268,8 @@ def apply_patch(current, patch):
             reward.pop(key)  # a key set to null is removed (e.g. a setting written in the wrong place)
         reward["terms"] = _merge_named(reward.get("terms"), reward_patch.get("terms"), reward_patch.get("remove"))
         stage["reward"] = reward
-    if "derived" in patch:
-        stage["derived"] = _merge_named(stage.get("derived"), patch.pop("derived"))
+    if "derived" in patch or "derived_remove" in patch:
+        stage["derived"] = _merge_named(stage.get("derived"), patch.pop("derived", None), patch.pop("derived_remove", None))
     stage.update(patch)
     for key in [k for k, v in stage.items() if v is None]:
         stage.pop(key)  # a top-level key set to null is removed
@@ -414,6 +423,7 @@ def stage_agent(client, prompts, context, plan, stage_index, previous_yamls, qua
         lr_range=list(limits["learning_rate"]),
         max_abs_weight=limits["max_abs_weight"],
         max_terms=MAX_TERMS,
+        max_derived=MAX_DERIVED,
     )
     base = [{"role": "system", "content": prompts["system"]}, {"role": "user", "content": user}]
     messages = base
@@ -427,6 +437,7 @@ def stage_agent(client, prompts, context, plan, stage_index, previous_yamls, qua
             previous_stage = None
     current = None  # the last complete draft (a retry answer may be a patch of it)
     fallback = None  # the last draft whose only problems were reward-ordering findings (used if no attempt passes)
+    reviewed = None  # the last draft that passed every check but the reward-hacking review (preferred over fallback)
     reviewed_stage = None  # the draft of the last review (a re-review looks at the changes since)
     measured = ""
     for attempt in range(max_retries + 1):
@@ -437,6 +448,7 @@ def stage_agent(client, prompts, context, plan, stage_index, previous_yamls, qua
         else:
             if stage.get("patch") and current is not None:
                 stage = apply_patch(current, stage)
+                stage = prune_derived(stage)  # (derived quantities whose terms the patch removed)
             stage.pop("patch", None)
             stage = expand_stage(stage, previous_stage)
             for key in ("adapter", "derived_check", "hacking_review", "ordering_warning"):
@@ -475,6 +487,8 @@ def stage_agent(client, prompts, context, plan, stage_index, previous_yamls, qua
                     f"{e.get('fix', '')}" for e in review["exploits"]
                 ]
         attempts.append({"attempt": attempt, "errors": errors, "derived_stats": stats, "hacking_review": review})
+        if errors and review is not None and review["severity"] == "major":
+            reviewed = (dict(stage), stats, review, ordering_note)
         if errors and stage is not None and all(e.startswith("reward ordering") for e in errors):
             fallback = (dict(stage), list(errors), stats)
         if not errors:
@@ -510,6 +524,21 @@ def stage_agent(client, prompts, context, plan, stage_index, previous_yamls, qua
             {"role": "user", "content": fill(retry, errors=error_text)},
         ]
         writer = light_client if all(e.startswith(FORMAT_ERRORS) for e in errors) else client
+    if reviewed is not None:
+        # no attempt passed, but a draft passed the schema, the live check and the ordering and failed only the
+        # reward-hacking review: it is accepted with the review's findings, as on the last attempt, instead of dropping
+        # the rest of the curriculum (a later patch that broke the schema does not lose it)
+        stage, stats, review, ordering_note = reviewed
+        stage["adapter"] = adapter
+        if stats:
+            stage["derived_check"] = stats
+        if ordering_note:
+            stage["ordering_warning"] = ordering_note
+        stage["hacking_review"] = {"severity": review["severity"],
+                                   "highest_reward_behavior": review["highest_reward_behavior"]}
+        attempts.append({"attempt": "fallback", "errors": [], "derived_stats": stats, "hacking_review": review,
+                         "note": "accepted the last draft whose only problem was the reward-hacking review"})
+        return stage, attempts
     if fallback is not None:
         # no attempt passed, but an earlier draft failed only the reward-ordering findings: it is accepted with them,
         # as on the last attempt (a late patch that breaks the schema does not drop the whole stage)

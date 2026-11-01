@@ -15,6 +15,7 @@ from .reward_registry import FUNCTIONS
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]{0,40}$"
 MAX_TERMS = 24  # reward terms per stage (later stages keep paying the terms of the earlier stages)
+MAX_DERIVED = 8  # derived quantities per stage (inherited ones that nothing uses any more are dropped)
 
 STAGE_SCHEMA = {
     "type": "object",
@@ -94,7 +95,7 @@ STAGE_SCHEMA = {
         "randomization": {"type": "object", "additionalProperties": {"type": "number"}},
         "derived": {
             "type": "array",
-            "maxItems": 6,
+            "maxItems": MAX_DERIVED,
             "items": {
                 "type": "object",
                 "required": ["name", "kind", "description", "code"],
@@ -158,8 +159,12 @@ def validate_stage(stage, quantities, limits, randomization_options):
     except jsonschema.ValidationError as e:
         location = "/".join(str(p) for p in e.absolute_path) or "(top level)"
         if e.validator == "maxItems" and isinstance(e.instance, list):
+            what = ("derived quantities: drop at least {n} with derived_remove: [names] (a patch) or merge them"
+                    if location == "derived" else
+                    "reward terms: drop at least {n} with reward.remove: [names] (a patch) or merge terms that pay the "
+                    "same thing (keep the terms that pay earlier skills)")
             return [f"schema error at {location}: {len(e.instance)} entries, at most {e.validator_value} are allowed; "
-                    "merge or drop terms (keep the terms that pay earlier skills)"]
+                    + what.format(n=len(e.instance) - e.validator_value)]
         message = e.message if len(e.message) < 400 else e.message[:200] + " ... " + e.message[-150:]
         return [f"schema error at {location}: {message}"]
 

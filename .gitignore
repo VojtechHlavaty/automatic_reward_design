@@ -13,3 +13,9 @@ __pycache__/
 # local secrets (keys belong in environment variables or ~/.config/reward_design/)
 *.key
 .env
+# teacher models and downloaded policy files (large, fetched or trained locally)
+reward_design/teachers/*.pt
+reward_design/teachers/pi05_unifolm/
+reward_design/teachers/paligemma_tokenizer/
+# generated per-skill env configs of skill runs
+reward_design/cfg/env/skill_*.yaml
