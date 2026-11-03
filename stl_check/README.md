@@ -11,11 +11,11 @@ episodes above real successes.
 |---|---|
 | Robustness code (`robustness.py`): predicates, ¬, ∧, ∨, F[a,b], G[a,b], batched in PyTorch | done; unit tests pass (`tests/`) |
 | Predicate library (`predicates.py`): dist, height, grasp, gripper_open, contact_force, speed, tilt | done; tested on synthetic trajectories only |
-| Spec (`specs/lift_cube.py`) with thresholds and reasons | done; separates success from hover, push, lift-then-drop and fling on synthetic episodes |
-| Recorder (`record_suite.py`): scripted IK success, hover, push, lift-then-drop; random; trained policy | written, **not run yet** |
+| Spec (`specs/lift_cube.py`) with thresholds and reasons | done; one change after the first real suite: the contact-force limit 50 → 250 N (a normal grasp peaks at 20–134 N) |
+| Recorder (`record_suite.py`): scripted success, hover, push, lift-then-drop; random; trained policy | done: first suite in `suite/` (4 episodes per kind), every episode on the right side of the spec |
 | Reward scoring (`score_rewards.py`): replays the suite under each LLM reward | written, **not run yet** |
 | Analysis (`analyze.py`): validation, Kendall τ, hacks above a success, LLM #2 verdict, results table | done; tested on a synthetic suite |
-| rtamt cross-check (`check_rtamt.py`) | done on the synthetic suite: 15 episodes, all equal to rtamt 0.4.10 |
+| rtamt cross-check (`check_rtamt.py`) | done: 15 synthetic and 15 recorded episodes, all equal to rtamt 0.4.10 |
 | Pipeline setup for the task (`tasks/franka_lift/`, `reward_design/cfg/env/franka_lift.yaml`) | done; the LLM rewards for the results table come from pipeline runs on it |
 
 ## Layout
@@ -42,12 +42,12 @@ Episode: 5 s at a 0.02 s control step (250 steps). Every window ends by 4.9 s.
 phi_lift =
      F[0,2.5]( grasp > 0  &  F[0,1.5]( G[0,0.5]( grasp > 0  &  cube_height > 0.10 ) ) )     (1)
   &  F[0,4.4]( G[0,0.5]( grasp > 0  &  cube_goal_dist < 0.05 ) )                              (2)
-  &  G[0,4.9]( cube_height > -0.01  &  cube_speed < 1.0  &  contact_force < 50 )              (3)
+  &  G[0,4.9]( cube_height > -0.01  &  cube_speed < 1.0  &  contact_force < 250 )             (3)
 ```
 
 1. Grasp the cube within 2.5 s. Within 1.5 s after that, it is held at least 0.10 m high for 0.5 s straight.
 2. Before 4.4 s, the cube is held within 0.05 m of the goal for 0.5 s straight.
-3. The cube never falls off the table, never moves faster than 1 m/s, and is never pushed harder than 50 N.
+3. The cube never falls off the table, never moves faster than 1 m/s, and is never pushed harder than 250 N.
 
 Why these thresholds, and why they differ from the task's own success test, is written next to each predicate in
 `specs/lift_cube.py`. In short:
@@ -104,13 +104,25 @@ it into the IsaacLab environment. Install it into a separate folder that only th
 python -m pip install --target ~/envs/rtamt_pkgs --no-deps rtamt==0.4.10 "antlr4-python3-runtime==4.7"
 ```
 
+## Scripted episodes run in the IK-Abs variant
+
+The scripted kinds (success, hover, push, lift_drop) run in `Isaac-Lift-Cube-Franka-IK-Abs-v0`. It is the same
+scene, cube, goal, rewards and success. Only the arm differs: stiff joint gains, and the action is the target
+end-effector pose. In the joint-position task the pipeline trains on, the arm's soft gains let it lag and sag under
+gravity, and scripted position control missed the cube by 4–6 cm.
+
+Random and policy episodes use the joint-position task. Each suite file records its task, and the replay uses it.
+
+Rewards with action terms (action rate) see different actions in the two variants. Compare their returns across
+kinds with that in mind.
+
 ## Trajectory suite
 
 `stl_check/suite/<kind>.pt`, one file per kind, `--num_envs` episodes each (16 by default):
 
 | Kind | What it is | Expected ρ |
 |---|---|---|
-| success | scripted IK: above the cube, down, close, lift to the goal, hold | > 0 |
+| success | scripted (IK-Abs task): above the cube, down, close, lift to the goal, hold | > 0 |
 | policy | a trained checkpoint (`--checkpoint`), deterministic | > 0 for its successful episodes |
 | random | uniform random actions | < 0 |
 | hover | hack (a): the open gripper parks 7 cm beside the cube | < 0 |

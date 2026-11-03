@@ -16,6 +16,9 @@ from isaaclab.utils.math import combine_frame_transforms
 from rd_lib.quantities import Quantity, mark_latched
 
 LIFT_HEIGHT = 0.04  # cube center height above which the task counts the cube as lifted [m] (object_is_lifted)
+REST_HEIGHT = 0.021  # cube center at rest on the table [m] (measured; it spawns at 0.055 and drops at the reset)
+LIFTED = REST_HEIGHT + 0.04  # the lifted flag: 4 cm above rest (the task's 0.04 is below the spawn height, so its
+# lift test is true for the first steps of every episode)
 GOAL_RADIUS = 0.05  # the task's success threshold: cube within this distance of the goal while lifted [m]
 REACH_RADIUS = 0.03  # end effector (fingertip center) this close to the cube center counts as at the cube [m]
 FINGER_OPEN = 0.04  # each finger joint: 0.04 m open, 0 closed
@@ -80,7 +83,7 @@ def _grasped(env):
 
 
 def _lifted(env):
-    return _cube_height(env) > LIFT_HEIGHT
+    return _cube_height(env) > LIFTED
 
 
 def _succeeded(env):
@@ -96,8 +99,9 @@ def _franka_lift():
             "distance from the end effector (the midpoint between the two fingertips) to the cube center [m]"),
         "cube_height": Quantity(
             _cube_height, "scalar",
-            f"height of the cube center above the table top (z = 0 at the robot base) [m]; the task counts the cube "
-            f"as lifted above {LIFT_HEIGHT}"),
+            f"height of the cube center above the table top (z = 0 at the robot base) [m]; it rests at {REST_HEIGHT} "
+            f"(it spawns at 0.055 and drops at each reset); the task's own success counts it as lifted above "
+            f"{LIFT_HEIGHT}"),
         "cube_to_goal_dist": Quantity(
             _cube_to_goal, "scalar",
             f"distance from the cube center to the commanded goal point [m] (success: below {GOAL_RADIUS} while "
@@ -129,12 +133,13 @@ def _franka_lift():
             f"have not closed all the way (there are no contact sensors, so a cube that is only touched while the "
             f"fingers close also counts)"),
         "lifted": Quantity(
-            _lifted, "flag", f"the cube center is above z = {LIFT_HEIGHT} m (the task's lift test)"),
+            _lifted, "flag", f"the cube center is above z = {LIFTED:.3f} m (4 cm above its rest height)"),
         "held_lifted": Quantity(
             lambda env: _lifted(env) & _grasped(env), "flag", "the cube is lifted and grasped"),
         "at_goal": Quantity(
-            lambda env: _lifted(env) & (_cube_to_goal(env) < GOAL_RADIUS), "flag",
-            f"the cube is lifted and within {GOAL_RADIUS} m of the goal (the task's success test, now)"),
+            lambda env: (_cube_height(env) > LIFT_HEIGHT) & (_cube_to_goal(env) < GOAL_RADIUS), "flag",
+            f"the cube center is above {LIFT_HEIGHT} m and within {GOAL_RADIUS} m of the goal (the task's success "
+            f"test, now; every goal is at least 0.25 m high)"),
         "succeeded": Quantity(
             _succeeded, "flag",
             "the task's success: at some step of this episode the cube was at the goal (latched; the episode does "
@@ -148,10 +153,10 @@ def _franka_lift_funnel():
     return [
         ("end effector at the cube", lambda env: _ee_to_cube(env) < REACH_RADIUS),
         ("grasped", _grasped),
-        (f"cube lifted above {LIFT_HEIGHT} m", _lifted),
+        (f"cube lifted 4 cm above its rest height", _lifted),
         ("lifted while grasped", lambda env: _lifted(env) & _grasped(env)),
         (f"cube within {GOAL_RADIUS} m of the goal while lifted (success)",
-         lambda env: _lifted(env) & (_cube_to_goal(env) < GOAL_RADIUS)),
+         lambda env: (_cube_height(env) > LIFT_HEIGHT) & (_cube_to_goal(env) < GOAL_RADIUS)),
     ]
 
 
