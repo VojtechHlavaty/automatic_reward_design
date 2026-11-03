@@ -15,7 +15,7 @@ episodes above real successes.
 | Recorder (`record_suite.py`): scripted IK success, hover, push, lift-then-drop; random; trained policy | written, **not run yet** |
 | Reward scoring (`score_rewards.py`): replays the suite under each LLM reward | written, **not run yet** |
 | Analysis (`analyze.py`): validation, Kendall τ, hacks above a success, LLM #2 verdict, results table | done; tested on a synthetic suite |
-| rtamt cross-check (`check_rtamt.py`) | written, **not run yet** (rtamt is not installed: `pip install rtamt`) |
+| rtamt cross-check (`check_rtamt.py`) | done on the synthetic suite: 15 episodes, all equal to rtamt 0.4.10 |
 | Pipeline setup for the task (`tasks/franka_lift/`, `reward_design/cfg/env/franka_lift.yaml`) | done; the LLM rewards for the results table come from pipeline runs on it |
 
 ## Layout
@@ -86,7 +86,7 @@ python stl_check/record_suite.py --kind hover --num_envs 16 --seed 3 --out stl_c
 python stl_check/score_rewards.py --suite stl_check/suite/hover.pt --rewards <stage.yaml> \
     --out stl_check/suite/hover_returns.json --headless
 python -m stl_check.analyze --suite_dir stl_check/suite --rewards <stage.yaml> --out stl_check/suite/results.md
-python -m stl_check.check_rtamt --suite_dir stl_check/suite --episodes 3      # needs: pip install rtamt
+PYTHONPATH=~/envs/rtamt_pkgs python -m stl_check.check_rtamt --suite_dir stl_check/suite --episodes 3
 ```
 
 The LLM rewards are the stage YAMLs of pipeline runs on the task:
@@ -96,6 +96,13 @@ cd reward_design && python pipeline.py env=franka_lift llm=openrouter_haiku5.5 g
 ```
 
 Each stage YAML stores LLM #2's verdict under `hacking_review`; `analyze.py` puts it in the table.
+
+**rtamt** needs `antlr4-python3-runtime==4.7`, while Hydra and OmegaConf (the pipeline) need 4.9. Do not install
+it into the IsaacLab environment. Install it into a separate folder that only the cross-check puts on its path:
+
+```bash
+python -m pip install --target ~/envs/rtamt_pkgs --no-deps rtamt==0.4.10 "antlr4-python3-runtime==4.7"
+```
 
 ## Trajectory suite
 

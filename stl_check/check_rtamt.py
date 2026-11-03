@@ -1,6 +1,9 @@
-"""Cross-check our robustness against rtamt on recorded trajectories (CPU only; needs ``pip install rtamt``).
+"""Cross-check our robustness against rtamt on recorded trajectories (CPU only).
 
-    python -m stl_check.check_rtamt --suite_dir suite --episodes 3
+rtamt needs antlr4-python3-runtime 4.7, which breaks Hydra/OmegaConf (4.9) in the IsaacLab environment, so it lives
+in its own folder (see README.md):
+
+    PYTHONPATH=~/envs/rtamt_pkgs python -m stl_check.check_rtamt --suite_dir suite --episodes 3
 
 For each chosen episode, every predicate of the spec is turned into its scaled margin signal p_i (so that rtamt's
 "p_i >= 0" scores exactly our margin / scale), the spec is written in rtamt's discrete-time syntax with the time
