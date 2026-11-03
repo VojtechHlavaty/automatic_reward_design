@@ -1,0 +1,31 @@
+{
+ "suite": "/home/hlavavo7/automatic_reward_design_stl/stl_check/suite/success.pt",
+ "kind": "success",
+ "replay_max_cube_deviation_m": 0.0,
+ "returns": {
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage0.yaml": [
+   -4.808470249176025,
+   -3.887051820755005,
+   -9.36588191986084,
+   -11.547866821289062
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage1.yaml": [
+   17.820178985595703,
+   17.785804748535156,
+   16.608848571777344,
+   18.490062713623047
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage2.yaml": [
+   35.85032653808594,
+   35.1342887878418,
+   38.71223831176758,
+   39.48048400878906
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage3.yaml": [
+   9.423442840576172,
+   7.4614481925964355,
+   -1.9418573379516602,
+   22.38125991821289
+  ]
+ }
+}

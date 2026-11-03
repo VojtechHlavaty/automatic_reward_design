@@ -31,5 +31,50 @@
    0.30740541219711304
   ]
  },
- "rewards": {}
+ "rewards": {
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage0.yaml": {
+   "tau": -0.4105263157894737,
+   "p": 0.011101359934968412,
+   "hacks_above_a_success": 12,
+   "by_kind": {
+    "hover": 4,
+    "push": 4,
+    "lift_drop": 4
+   },
+   "verdict": "major: The arm reaches the cube with the gripper open and pushes or drags the cube along the table until the end effector is within 0.03 m of the cube center"
+  },
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage1.yaml": {
+   "tau": 0.2105263157894737,
+   "p": 0.20862839781386747,
+   "hacks_above_a_success": 0,
+   "by_kind": {
+    "hover": 0,
+    "push": 0,
+    "lift_drop": 0
+   },
+   "verdict": "major: Close the fingers on the cube while it stays on the table (or drag it along the table) with the closing command held, the end effector within 0.03 m of the cube"
+  },
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage2.yaml": {
+   "tau": 0.17894736842105263,
+   "p": 0.2883781963764095,
+   "hacks_above_a_success": 0,
+   "by_kind": {
+    "hover": 0,
+    "push": 0,
+    "lift_drop": 0
+   },
+   "verdict": "major: Get the cube above 0.04 m without a secure grasp, for example by tipping or balancing it on an edge, jamming it against a finger or the gripper body, or pushing"
+  },
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage3.yaml": {
+   "tau": -0.2631578947368421,
+   "p": 0.11260412706479736,
+   "hacks_above_a_success": 0,
+   "by_kind": {
+    "hover": 0,
+    "push": 0,
+    "lift_drop": 0
+   },
+   "verdict": "major: Grip the cube on the table (or drag it along the table) with the fingers stopped at about 0.048 m and the hand at grasp height, so secure_grip holds without any"
+  }
+ }
 }

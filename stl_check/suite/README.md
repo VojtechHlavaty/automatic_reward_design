@@ -13,3 +13,11 @@ Recorded with `python stl_check/run_suite.py --gpu 1 --num_envs 4 --out_dir stl_
 
 `results.md` is the spec validation of this suite. Every episode is on the right side. The rtamt cross-check gives
 the same robustness on 15 of these episodes.
+
+## Scored rewards (trial run)
+
+`results.md` also scores the four stage rewards of a short trial pipeline run on `franka_lift`
+(`reward_design/outputs/runs/franka_try1`: 1 iteration, 1 candidate, 500 PPO iterations, 0% success). They are
+curriculum stages, not full-task rewards: reward_1 is the reach stage. That a reach reward ranks every hack above
+the successes is expected, and says nothing about the full task. The table becomes meaningful with full-run rewards
+and more episodes per kind.

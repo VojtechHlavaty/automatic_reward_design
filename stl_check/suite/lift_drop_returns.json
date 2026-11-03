@@ -1,0 +1,31 @@
+{
+ "suite": "/home/hlavavo7/automatic_reward_design_stl/stl_check/suite/lift_drop.pt",
+ "kind": "lift_drop",
+ "replay_max_cube_deviation_m": 0.0,
+ "returns": {
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage0.yaml": [
+   1.1532506942749023,
+   0.4414113759994507,
+   0.18012917041778564,
+   -0.24702560901641846
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage1.yaml": [
+   8.519779205322266,
+   7.413939952850342,
+   4.905604362487793,
+   6.636898517608643
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage2.yaml": [
+   17.638683319091797,
+   17.342042922973633,
+   11.801441192626953,
+   13.7820405960083
+  ],
+  "/home/hlavavo7/automatic_reward_design/reward_design/outputs/runs/franka_try1/iter0/cand0/stage3.yaml": [
+   -11.28864860534668,
+   -7.200496196746826,
+   -25.389537811279297,
+   -3.2066574096679688
+  ]
+ }
+}

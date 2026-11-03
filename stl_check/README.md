@@ -13,7 +13,7 @@ episodes above real successes.
 | Predicate library (`predicates.py`): dist, height, grasp, gripper_open, contact_force, speed, tilt | done; tested on synthetic trajectories only |
 | Spec (`specs/lift_cube.py`) with thresholds and reasons | done; one change after the first real suite: the contact-force limit 50 → 250 N (a normal grasp peaks at 20–134 N) |
 | Recorder (`record_suite.py`): scripted success, hover, push, lift-then-drop; random; trained policy | done: first suite in `suite/` (4 episodes per kind), every episode on the right side of the spec |
-| Reward scoring (`score_rewards.py`): replays the suite under each LLM reward | written, **not run yet** |
+| Reward scoring (`score_rewards.py`): replays the suite under each LLM reward | done: the replay reproduces every recorded episode exactly (deviation 0.0 m) |
 | Analysis (`analyze.py`): validation, Kendall τ, hacks above a success, LLM #2 verdict, results table | done; tested on a synthetic suite |
 | rtamt cross-check (`check_rtamt.py`) | done: 15 synthetic and 15 recorded episodes, all equal to rtamt 0.4.10 |
 | Pipeline setup for the task (`tasks/franka_lift/`, `reward_design/cfg/env/franka_lift.yaml`) | done; the LLM rewards for the results table come from pipeline runs on it |
