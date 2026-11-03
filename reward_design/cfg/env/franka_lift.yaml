@@ -1,0 +1,54 @@
+task: Isaac-Lift-Cube-Franka-v0  # IsaacLab gym task ID (IsaacLab's own manager-based task)
+env_name: franka_lift  # run names (and the optional context file env_context/<env_name>_obs.py)
+description: >-
+  to make a fixed-base Franka Emika Panda arm pick up a small cube from a table with its parallel gripper and hold it at a goal point in the air.
+  Robot: the 7-joint Panda arm stands at the environment origin (its base at z = 0, on the table top) with a two-finger parallel gripper; the end effector ("ee") is the midpoint between the two fingertips, 0.1034 m past the panda_hand link.
+  Actions (8, each in [-1, 1]): actions 0-6 set the 7 arm joint position targets as the default joint position plus 0.5 rad times the action (absolute offsets from the default pose, not velocities: holding an action keeps the arm at that pose);
+  action 7 is a binary gripper command: a negative action closes the fingers (each finger joint to 0), zero or positive opens them (each to 0.04 m, 0.08 m between the fingers).
+  The policy observes only state, no camera images: the 9 joint positions (relative to the default pose) and velocities, the cube position in the robot's root frame, the goal command (position and orientation in the robot's root frame) and the previous actions.
+  The cube (IsaacLab's DexCube at 0.8 scale, about 0.048 m wide) rests on the table with its center at about z = 0.024 m; at each reset it is placed at x = 0.5 +- 0.1 m and y = +-0.25 m (uniform) in front of the robot, always with the same orientation.
+  The goal is a point drawn once per episode (uniform: x 0.4-0.6 m, y -0.25-0.25 m, z 0.25-0.5 m in the robot's root frame); the cube must be lifted and brought there.
+  An episode lasts 5 s (250 control steps, env.step_dt = 0.02 s); it ends early only when the cube falls below z = -0.05 m (off the table).
+  The task's success (the flag succeeded, latched): at some step of the episode the cube center is above z = 0.04 m (lifted) and within 0.05 m of the goal point. Success does not end the episode.
+  All positions are world positions minus env.scene.env_origins (environment-local); heights are z values.
+success_metric: Metrics/success_rate  # TensorBoard tag used as the task score (the task's own sticky success, logged at each reset)
+success_higher_is_better: True
+success_reduce: tail  # 'tail' = mean of the last 10% of training, 'max' = best value
+secondary_metric: Generated/gt_reward  # tie-breaker when task scores are equal: the original task reward
+video_length: 250  # control steps per rollout video (one 5 s episode)
+video_viewer:  # camera for rollout videos (IsaacLab ViewerCfg fields), close to the table of environment 0
+  origin_type: env
+  env_index: 0
+  eye: [1.6, 1.2, 0.9]
+  lookat: [0.5, 0.0, 0.15]
+adapter: franka_lift  # task quantities (tasks/franka_lift/quantities.py)
+experiment_name: franka_lift  # RSL-RL experiment name of the task (log folder logs/rsl_rl/<experiment_name>)
+init_policy_description: ""  # describe the initial policy here when init_checkpoint is set
+scratch_policy_description: >-  # used when no init_checkpoint is given
+  Every curriculum starts from scratch: a randomly initialized policy with no prior skills (it does not reach, grasp
+  or lift yet). Plan the curriculum so that the early stages teach the reach and a grasp, then the lift, then bringing
+  the lifted cube to the goal point.
+progress_flags: [at_cube, grasped, lifted, held_lifted, at_goal, succeeded]  # task steps, first to last, in the form the next step can build on (ranks policies by how far they get)
+success_flag: succeeded  # ranked by the episode success rate (latched: true from the first step at the goal)
+action_names: [panda joint 1, panda joint 2, panda joint 3, panda joint 4, panda joint 5, panda joint 6, panda joint 7, gripper]
+exploration:  # action noise of the policy (rd_lib/exploration.py); action 7 is the binary gripper command
+  min_std: 0.3
+  min_std_final: 0.1
+  max_std: 1.0
+env_reference: |-
+  Environment attributes for derived quantities (read only; IsaacLab manager-based task; positions in metres, world
+  frame unless noted; env-local = world minus env.scene.env_origins; quaternions (x, y, z, w); tensors have one row per
+  environment):
+  - env.step_dt: control step [s] (0.02). env.num_envs, env.device. env.episode_length_buf: steps since the reset.
+  - env.scene["robot"]: the Panda articulation. .data.joint_pos.torch / joint_vel.torch [rad, m; rad/s]: 9 joints, the
+    7 arm joints (panda_joint1-7) first, then the two finger joints (panda_finger_joint1-2, 0 closed .. 0.04 m open
+    each); .data.default_joint_pos.torch: the default pose; .data.root_pos_w.torch / root_quat_w.torch: the base;
+    .data.body_pos_w.torch: all links (index with env.scene["robot"].find_bodies("panda_hand")[0]; the helpers
+    h.body_pos / h.body_quat expect a direct task's env._robot and do not work here).
+  - env.scene["object"]: the cube (rigid object): .data.root_pos_w.torch, root_quat_w.torch, root_lin_vel_w.torch,
+    root_ang_vel_w.torch.
+  - env.scene["ee_frame"].data.target_pos_w.torch[:, 0, :]: the end effector (midpoint between the fingertips), world.
+  - env.command_manager.get_command("object_pose")[:, :3]: the goal point in the robot's root frame (world: combine with
+    the robot's root pose; the quantity cube_to_goal_dist already does this).
+  - env.action_manager.action / env.action_manager.prev_action: the 8 actions now and in the previous step (each in
+    [-1, 1]; action 7 < 0 closes the gripper).

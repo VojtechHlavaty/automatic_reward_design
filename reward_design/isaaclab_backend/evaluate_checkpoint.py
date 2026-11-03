@@ -77,13 +77,20 @@ def main(env_cfg, agent_cfg):
                        "broken_by": [0] * (len(hold[2]) if hold else 0)}
         totals = {"episodes": 0, "success": 0, "conditions": [0] * len(funnel), "success_steps": []}
 
+        # tasks without an env._succeeded tensor: the adapter's success flag (RD_SUCCESS_FLAG), read before the reset
+        success_quantity = get_adapter(args_cli.adapter).get(os.environ.get("RD_SUCCESS_FLAG") or "succeeded")
         original_reset = u._reset_idx
 
         def reset_idx(env_ids):
             if env_ids is not None and u.common_step_counter > 0:
                 ids = torch.as_tensor(env_ids, device=u.device)
                 totals["episodes"] += len(ids)
-                succeeded = u._succeeded[ids] if hasattr(u, "_succeeded") else torch.zeros_like(ids, dtype=torch.bool)
+                if hasattr(u, "_succeeded"):
+                    succeeded = u._succeeded[ids]
+                elif success_quantity is not None:  # e.g. a manager-based task: its adapter's success flag
+                    succeeded = success_quantity.fn(u).bool()[ids]
+                else:
+                    succeeded = torch.zeros_like(ids, dtype=torch.bool)
                 totals["success"] += int(succeeded.sum())
                 totals["success_steps"] += u.episode_length_buf[ids[succeeded]].tolist()
                 for k in range(len(funnel)):

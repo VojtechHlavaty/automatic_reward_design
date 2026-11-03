@@ -359,6 +359,11 @@ def install(env):
     settings = json.loads(raw)
     if float(settings.get("prob", 0.0)) <= 0.0 and float(settings.get("progress_prob", 0.0)) <= 0.0:
         return None
+    from isaaclab.envs import DirectRLEnv
+
+    if not isinstance(env, DirectRLEnv):  # the snapshots and the done hook need a DirectRLEnv's buffers
+        print(f"Hard-case starts: not available for {type(env).__name__} (only DirectRLEnv tasks); off", flush=True)
+        return None
     hard = HardStarts(env, settings)
     original = env._reset_idx
 
