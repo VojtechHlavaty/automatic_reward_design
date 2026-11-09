@@ -82,8 +82,13 @@ def episode(kind: str) -> dict:
             action[drop] = 1.0
             fingers[drop] = 0.04
             cube[drop, 2] = rest
-        if kind == "fling":  # throws the cube through the goal at 3 m/s
-            vel[(t > 2.3) & (t < 2.5)] = torch.tensor([3.0, 0.0, 0.0])
+        if kind == "fling":  # lets go at 2.0 s mid-lift: the cube flies on through the goal (2.4 s), then lands
+            free = t >= 2.0
+            action[free] = 1.0
+            fingers[free] = 0.04
+            ee[free] = cube[int(2.0 / DT)]
+            vel[free & (t < 2.6)] = torch.tensor([1.5, 0.0, 1.0])
+            cube[t >= 2.6, 2] = rest
     elif kind == "hover":  # next to the cube, open gripper
         ee[reach] = torch.tensor([0.5, 0.06, rest])
     elif kind == "push":  # closed fingers sweep the cube along the table

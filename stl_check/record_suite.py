@@ -62,7 +62,8 @@ class ScriptedPose:
     """
 
     MAX_SPEED = 0.4  # m/s
-    ARRIVED = 0.012  # m
+    ARRIVED = 0.02  # m (the IK arm settles up to about 1.4 cm short of targets far to the side; at 0.012 it waited out
+    # the timeouts there and lifted too late to hold the cube at the goal)
     TIMEOUT = 1.5  # s per approach phase
     CLOSE_TIME = 0.4  # s with the fingers closing before the lift
 
@@ -82,6 +83,7 @@ class ScriptedPose:
         self.setpoint = None
         self.drop_after = 0.3 + 0.4 * torch.rand(n, device=dev)  # lift_drop: open this long after the lift starts
         self.sweep_to = None
+        self.hold_offset = None  # success / lift_drop: fingertip center minus cube center when the lift starts
 
     def _arrived(self, ee, target):
         return (torch.linalg.norm(ee - target, dim=-1) < self.ARRIVED) | (self.phase_t > self.TIMEOUT)
@@ -101,7 +103,11 @@ class ScriptedPose:
         none = torch.zeros_like(p, dtype=torch.bool)
         if self.kind in ("success", "lift_drop"):
             target = torch.where((p == 0).unsqueeze(-1), cube + up, cube)
-            target = torch.where((p >= 3).unsqueeze(-1), goal, target)
+            # lift: bring the cube (not the fingertip center) to the goal, with the grasp offset at the start of the lift
+            if self.hold_offset is None:
+                self.hold_offset = torch.zeros_like(cube)
+            self.hold_offset = torch.where((p < 3).unsqueeze(-1), ee - cube, self.hold_offset)
+            target = torch.where((p >= 3).unsqueeze(-1), goal + self.hold_offset, target)
             grip = torch.where(p >= 2, -torch.ones_like(grip), grip)
             if self.kind == "lift_drop":
                 grip = torch.where((p >= 3) & (self.phase_t > self.drop_after), torch.ones_like(grip), grip)
@@ -158,7 +164,16 @@ def main():
         from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
         from rsl_rl.runners import OnPolicyRunner
 
+        from importlib import metadata
+
+        from isaaclab_rl.rsl_rl import handle_deprecated_rsl_rl_cfg
+
+        if os.environ.get("RD_EXPLORATION"):  # a pipeline policy: the same output squashing as in its training
+            sys.path.insert(0, os.path.expanduser("~/automatic_reward_design/reward_design"))
+            from rd_lib import exploration  # noqa: F401
+
         agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
+        agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, metadata.version("rsl-rl-lib"))
         wrapped = RslRlVecEnvWrapper(env)
         runner = OnPolicyRunner(wrapped, agent_cfg.to_dict(), log_dir=None, device=dev)
         runner.load(args_cli.checkpoint)

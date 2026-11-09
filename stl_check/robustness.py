@@ -121,16 +121,33 @@ def episode_robustness(phi, signals: dict, dt: float, valid: torch.Tensor | None
 
 
 def explain(phi, signals: dict, dt: float, valid: torch.Tensor | None = None, episode: int = 0) -> list[str]:
-    """Robustness of every sub-formula at step 0 of one episode, as indented lines (which part failed, by how much)."""
+    """Robustness of every sub-formula of one episode, as indented lines (which part failed, by how much, and when).
+
+    Each sub-formula is evaluated at the time that decides its parent: the parts of an And or Or at the parent's
+    time; the inside of F at the step of its window with the best value, the inside of G at the step with the worst
+    value (the step that decided the operator). The time is printed after the value."""
     lines = []
+    if valid is None:
+        valid = torch.ones(next(iter(signals.values())).shape, dtype=torch.bool)
+    steps = valid.shape[1]
 
-    def walk(node, depth):
-        value = float(robustness(node, signals, dt, valid)[episode, 0])
-        lines.append("  " * depth + f"{value:+.4f}  {describe(node, top=False)}")
+    def walk(node, depth, t):
+        trace = robustness(node, signals, dt, valid)[episode]
+        lines.append("  " * depth + f"{float(trace[t]):+.4f}  @ {t * dt:.2f} s  {describe(node, top=False)}")
+        if isinstance(node, (F, G)):
+            inner = robustness(node.phi, signals, dt, valid)[episode]
+            lo, hi = t + _steps(node.a, dt), min(t + _steps(node.b, dt), steps - 1)
+            window = [k for k in range(lo, hi + 1) if valid[episode, k]]
+            if not window:
+                return
+            values = inner[window]
+            pick = int(values.argmax()) if isinstance(node, F) else int(values.argmin())
+            walk(node.phi, depth + 1, window[pick])
+            return
         for child in children(node):
-            walk(child, depth + 1)
+            walk(child, depth + 1, t)
 
-    walk(phi, 0)
+    walk(phi, 0, 0)
     return lines
 
 

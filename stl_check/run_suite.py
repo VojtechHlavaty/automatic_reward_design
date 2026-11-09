@@ -38,10 +38,20 @@ def main():
     parser.add_argument("--rewards", nargs="*", default=[])
     parser.add_argument("--outcomes", nargs="*", default=[])
     parser.add_argument("--skip_record", action="store_true", help="reuse the recorded suite files")
+    parser.add_argument("--skip_score", action="store_true", help="reuse the scored returns (analysis only)")
+    parser.add_argument("--reward_design", default=None,
+                        help="reward-design code for the rewards (rd_lib; level-pay runs need one with "
+                             "rd_lib/level_pay.py); default: this repository's reward_design")
+    parser.add_argument("--group", default="",
+                        help="suffix of the returns files (<kind>_returns_<group>.json), to score rewards of runs "
+                             "that need different --reward_design in separate calls; analyze.py merges them")
+    parser.add_argument("--analyze_rewards", nargs="*", default=None,
+                        help="rewards of the results table (default: --rewards), e.g. every group's")
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=args.gpu, OMNI_KIT_ACCEPT_EULA="YES")
-    for key in ("RD_SKILL", "RD_HARD_STARTS", "RD_OBS_FLAGS", "RD_EXPLORATION", "RD_REWARD_FILE"):
+    for key in ("RD_SKILL", "RD_HARD_STARTS", "RD_OBS_FLAGS", "RD_EXPLORATION", "RD_REWARD_FILE", "RD_LEVEL_PAY",
+                "RD_GAMMA"):
         env.pop(key, None)
     python = sys.executable
     kinds = KINDS + (["policy"] if args.checkpoint else [])
@@ -52,16 +62,20 @@ def main():
             if kind == "policy":
                 cmd += ["--checkpoint", args.checkpoint]
             run(cmd, env, os.path.join(args.out_dir, f"record_{kind}.log"))
-    if args.rewards:
+    if args.rewards and not args.skip_score:
+        suffix = f"_{args.group}" if args.group else ""
         for kind in kinds:
             cmd = [python, os.path.join(HERE, "score_rewards.py"), "--suite", os.path.join(args.out_dir, f"{kind}.pt"),
                    "--rewards", *[os.path.abspath(r) for r in args.rewards],
-                   "--out", os.path.join(args.out_dir, f"{kind}_returns.json"), "--headless"]
-            run(cmd, env, os.path.join(args.out_dir, f"score_{kind}.log"))
+                   "--out", os.path.join(args.out_dir, f"{kind}_returns{suffix}.json"), "--headless"]
+            if args.reward_design:
+                cmd += ["--reward_design", args.reward_design]
+            run(cmd, env, os.path.join(args.out_dir, f"score_{kind}{suffix}.log"))
     cmd = [python, "-m", "stl_check.analyze", "--suite_dir", args.out_dir, "--out",
            os.path.join(args.out_dir, "results.md")]
-    if args.rewards:
-        cmd += ["--rewards", *[os.path.abspath(r) for r in args.rewards]]
+    rewards = args.rewards if args.analyze_rewards is None else args.analyze_rewards
+    if rewards:
+        cmd += ["--rewards", *[os.path.abspath(r) for r in rewards]]
     if args.outcomes:
         cmd += ["--outcomes", *args.outcomes]
     subprocess.run(cmd, cwd=ROOT, check=True)

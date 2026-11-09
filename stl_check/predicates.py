@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import torch
 
-REACH = 0.02  # fingertip center this close to the cube center counts as at the cube [m]
+REACH = 0.045  # fingertip center this close to the cube center counts as at the cube [m]. Was 0.02: a firm grasp
+# near the cube's edge (0.048 m cube) holds the fingertip center 3-4 cm off its center (suite16, 5 of 16 scripted lifts)
 SHUT = 0.01  # fingers closer than this have closed on nothing [m]
 FINGER_OPEN = 0.04  # each finger joint: 0.04 m open, 0 closed
 
